@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { generateBookingEmailHtml } from '../src/lib/emailUtils';
+import { generateBookingEmailHtml } from '../src/lib/emailUtils.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
