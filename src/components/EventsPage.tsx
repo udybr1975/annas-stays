@@ -26,28 +26,64 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const generate = async () => {
-      try {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
+  const generate = async () => {
+    try {
+      // Explicitly using the newer constructor and v1beta version
+      const ai = new GoogleGenAI({ 
+        apiKey: import.meta.env.VITE_GEMINI_API_KEY 
+      });
 
-        const response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues. Return a JSON object with this exact structure: { "week": "string describing the week range", "categories": [{ "name": "category name", "events": [{ "title": "event title", "venue": "venue name", "date": "date string", "desc": "short description", "price": "price or Free" }] }] }`,
-          config: {
-            responseMimeType: "application/json",
+      const response = await ai.models.generateContent({
+        // USE THIS EXACT STRING:
+        model: "gemini-1.5-flash-latest", 
+        contents: "Generate a Helsinki weekly events digest for April 2026. Use real Helsinki venues.",
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              week: { type: Type.STRING },
+              categories: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    events: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          venue: { type: Type.STRING },
+                          date: { type: Type.STRING },
+                          desc: { type: Type.STRING },
+                          price: { type: Type.STRING }
+                        },
+                        required: ["title", "venue", "date", "desc", "price"]
+                      }
+                    }
+                  },
+                  required: ["name", "events"]
+                }
+              }
+            },
+            required: ["week", "categories"]
           }
-        });
+        }
+      });
 
-        const data = JSON.parse(response.text || "{}");
-        setEvents(data);
-      } catch (e: any) {
-        setError(e.message);
-      }
-      setLoading(false);
-    };
-
-    generate();
-  }, []);
+      const data = JSON.parse(response.text || "{}");
+      setEvents(data);
+    } catch (e: any) {
+      console.error("AI Error:", e);
+      // Let's make the error message helpful so we know if it's the key or the model
+      setError(`Error: ${e.message}`);
+    }
+    setLoading(false);
+  };
+  generate();
+}, []);
 
   return (
     <div className="fixed inset-0 bg-charcoal/60 z-[2000] flex items-center justify-center p-4" onClick={onClose}>
