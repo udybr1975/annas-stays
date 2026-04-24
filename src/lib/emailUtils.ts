@@ -3,7 +3,10 @@ export function generateBookingEmailHtml(booking: any, listing: any, guest: any)
     ? Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
 
-  const manageUrl = `${window.location.origin}/manage-booking/${booking.id}?email=${encodeURIComponent(guest.email || '')}`;
+  // Technical Fix: Hardcoded URL because 'window' is not available on the server
+  const siteUrl = "https://udybr1975-annas-stays.vercel.app";
+  const manageUrl = `${siteUrl}/manage-booking/${booking.id}?email=${encodeURIComponent(guest.email || '')}`;
+  
   const headerImg = listing.imgs?.[0] || "https://picsum.photos/seed/helsinki/1200/800";
 
   return `
@@ -14,7 +17,7 @@ export function generateBookingEmailHtml(booking: any, listing: any, guest: any)
       <style>
         body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2C2C2A; background-color: #F7F4EF; margin: 0; padding: 0; }
         .container { max-width: 600px; margin: 20px auto; background: #ffffff; border: 1px solid #E8E3DC; }
-        .header-img { width: 100%; height: 200px; object-cover: cover; }
+        .header-img { width: 100%; height: 200px; object-fit: cover; } /* Fixed CSS property */
         .content { padding: 40px; }
         .welcome-box { background: #FAF9F6; border-left: 4px solid #B09B89; padding: 30px; margin-bottom: 30px; }
         .serif { font-family: Georgia, serif; }
@@ -23,7 +26,6 @@ export function generateBookingEmailHtml(booking: any, listing: any, guest: any)
         .label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #7A756E; margin-bottom: 5px; }
         .value { font-size: 14px; margin-bottom: 15px; }
         .price { font-size: 24px; color: #3D4F3E; }
-        .btn { display: inline-block; background: #2C2C2A; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-top: 20px; }
         .footer { background: #2C2C2A; color: #C8B89A; padding: 20px; text-align: center; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; }
         .policy { font-size: 12px; color: #7A756E; font-style: italic; border-top: 1px solid #E8E3DC; padding-top: 20px; margin-top: 30px; }
       </style>
