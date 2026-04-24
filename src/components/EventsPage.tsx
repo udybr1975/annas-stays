@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, SchemaType } from "@google/genai"; // Changed 'Type' to 'SchemaType'
 import { C } from "../constants";
 
 interface Event {
@@ -34,44 +34,43 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
       });
 
       const response = await ai.models.generateContent({
-        // USE THIS EXACT STRING:
-        model: "gemini-1.5-flash-latest", 
-        contents: "Generate a Helsinki weekly events digest for April 2026. Use real Helsinki venues.",
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              week: { type: Type.STRING },
-              categories: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    events: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          title: { type: Type.STRING },
-                          venue: { type: Type.STRING },
-                          date: { type: Type.STRING },
-                          desc: { type: Type.STRING },
-                          price: { type: Type.STRING }
-                        },
-                        required: ["title", "venue", "date", "desc", "price"]
+          model: "gemini-1.5-flash-latest",
+          contents: "Generate a Helsinki weekly events digest for April 2026. Use real Helsinki venues.",
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: SchemaType.OBJECT, // Changed here
+              properties: {
+                week: { type: SchemaType.STRING }, // Changed here
+                categories: {
+                  type: SchemaType.ARRAY, // Changed here
+                  items: {
+                    type: SchemaType.OBJECT, // Changed here
+                    properties: {
+                      name: { type: SchemaType.STRING }, // Changed here
+                      events: {
+                        type: SchemaType.ARRAY, // Changed here
+                        items: {
+                          type: SchemaType.OBJECT, // Changed here
+                          properties: {
+                            title: { type: SchemaType.STRING },
+                            venue: { type: SchemaType.STRING },
+                            date: { type: SchemaType.STRING },
+                            desc: { type: SchemaType.STRING },
+                            price: { type: SchemaType.STRING }
+                          },
+                          required: ["title", "venue", "date", "desc", "price"]
+                        }
                       }
-                    }
-                  },
-                  required: ["name", "events"]
+                    },
+                    required: ["name", "events"]
+                  }
                 }
-              }
-            },
-            required: ["week", "categories"]
+              },
+              required: ["week", "categories"]
+            }
           }
-        }
-      });
+        });
 
       const data = JSON.parse(response.text || "{}");
       setEvents(data);
