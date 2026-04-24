@@ -25,22 +25,23 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
- useEffect(() => {
+useEffect(() => {
     const generate = async () => {
       try {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         
-        // Using a direct fetch call to bypass library version conflicts
+        // Changed v1beta to v1 and gemini-1.5-flash to gemini-pro
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: "Generate a Helsinki weekly events digest for April 2026 in JSON format. Use categories with name and events list (title, venue, date, desc, price)." }] }],
-              generationConfig: {
-                responseMimeType: "application/json"
-              }
+              contents: [{ 
+                parts: [{ 
+                  text: "Generate a Helsinki weekly events digest for April 2026. Return ONLY a JSON object with a 'week' string and a 'categories' array. Each category has a 'name' and an 'events' array (title, venue, date, desc, price)." 
+                }] 
+              }]
             })
           }
         );
@@ -52,7 +53,9 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         }
 
         const textResponse = rawData.candidates[0].content.parts[0].text;
-        const data = JSON.parse(textResponse);
+        // Clean the response in case the AI wraps it in ```json blocks
+        const cleanedJson = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+        const data = JSON.parse(cleanedJson);
         setEvents(data);
       } catch (e: any) {
         console.error("AI Error:", e);
@@ -62,7 +65,6 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
     };
     generate();
   }, []);
-
   return (
     <div className="fixed inset-0 bg-black/60 z-[2000] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white w-full max-w-[700px] max-h-[90vh] overflow-y-auto p-10 relative" onClick={e => e.stopPropagation()}>
