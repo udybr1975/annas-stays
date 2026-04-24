@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { C } from "../constants";
 
 interface Event {
@@ -28,17 +28,17 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const generate = async () => {
       try {
-        const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
-        const model = ai.getGenerativeModel({
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
+
+        const response = await ai.models.generateContent({
           model: "gemini-1.5-flash",
-          generationConfig: { responseMimeType: "application/json" }
+          contents: `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues. Return a JSON object with this exact structure: { "week": "string describing the week range", "categories": [{ "name": "category name", "events": [{ "title": "event title", "venue": "venue name", "date": "date string", "desc": "short description", "price": "price or Free" }] }] }`,
+          config: {
+            responseMimeType: "application/json",
+          }
         });
 
-        const result = await model.generateContent(
-          `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues. Return JSON with this exact structure: { "week": "string describing the week range", "categories": [{ "name": "category name", "events": [{ "title": "event title", "venue": "venue name", "date": "date string", "desc": "short description", "price": "price or Free" }] }] }`
-        );
-
-        const data = JSON.parse(result.response.text());
+        const data = JSON.parse(response.text || "{}");
         setEvents(data);
       } catch (e: any) {
         setError(e.message);
