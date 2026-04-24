@@ -31,7 +31,7 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
 
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-preview-04-17",
+          model: "gemini-1.5-flash",
           contents: `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues.`,
           config: {
             responseMimeType: "application/json",
