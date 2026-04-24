@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GoogleGenAI, SchemaType } from "@google/genai"; // Changed 'Type' to 'SchemaType'
+import { GoogleGenAI } from "@google/genai"; 
 import { C } from "../constants";
 
 interface Event {
@@ -39,25 +39,25 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
           config: {
             responseMimeType: "application/json",
             responseSchema: {
-              type: SchemaType.OBJECT, // Changed here
+              type: "OBJECT", // Use a simple string here
               properties: {
-                week: { type: SchemaType.STRING }, // Changed here
+                week: { type: "STRING" },
                 categories: {
-                  type: SchemaType.ARRAY, // Changed here
+                  type: "ARRAY",
                   items: {
-                    type: SchemaType.OBJECT, // Changed here
+                    type: "OBJECT",
                     properties: {
-                      name: { type: SchemaType.STRING }, // Changed here
+                      name: { type: "STRING" },
                       events: {
-                        type: SchemaType.ARRAY, // Changed here
+                        type: "ARRAY",
                         items: {
-                          type: SchemaType.OBJECT, // Changed here
+                          type: "OBJECT",
                           properties: {
-                            title: { type: SchemaType.STRING },
-                            venue: { type: SchemaType.STRING },
-                            date: { type: SchemaType.STRING },
-                            desc: { type: SchemaType.STRING },
-                            price: { type: SchemaType.STRING }
+                            title: { type: "STRING" },
+                            venue: { type: "STRING" },
+                            date: { type: "STRING" },
+                            desc: { type: "STRING" },
+                            price: { type: "STRING" }
                           },
                           required: ["title", "venue", "date", "desc", "price"]
                         }
