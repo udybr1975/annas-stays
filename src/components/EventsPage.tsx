@@ -28,10 +28,11 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const generate = async () => {
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
+
         const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: "Generate a Helsinki weekly events digest for April 3-9, 2026. Use real Helsinki venues.",
+          model: "gemini-2.0-flash",
+          contents: `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues.`,
           config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -75,6 +76,7 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
       }
       setLoading(false);
     };
+
     generate();
   }, []);
 
@@ -84,13 +86,16 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} className="absolute top-4 right-5 bg-none border-none text-xl cursor-pointer text-muted">✕</button>
         <p className="text-[0.62rem] tracking-widest uppercase text-clay mb-1.5 font-sans">Helsinki Guide</p>
         <h2 className="font-serif text-[2rem] font-light mb-4">This week in Helsinki</h2>
+
         {loading && (
           <div className="py-12 text-center">
             <div className="text-[0.82rem] text-muted mb-4">Generating this week's events...</div>
             <div className="w-9 h-9 border-2 border-mist border-t-forest rounded-full mx-auto animate-spin" />
           </div>
         )}
+
         {error && <div className="p-6 bg-red-50 text-red-800 text-[0.82rem]">{error}</div>}
+
         {events && (
           <div>
             <p className="text-[0.82rem] text-muted mb-7 font-light">{events.week} · Curated by Anna's Stays</p>
