@@ -28,51 +28,31 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
  useEffect(() => {
     const generate = async () => {
       try {
-        const ai = new GoogleGenAI({ 
-          apiKey: import.meta.env.VITE_GEMINI_API_KEY 
-        });
-
-        const response = await ai.models.generateContent({
-          // CHANGE THIS LINE TO EXACTLY THIS:
-          model: "models/gemini-1.5-flash", 
-          contents: "Generate a Helsinki weekly events digest for April 2026. Use real Helsinki venues.",
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                week: { type: "STRING" },
-                categories: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      name: { type: "STRING" },
-                      events: {
-                        type: "ARRAY",
-                        items: {
-                          type: "OBJECT",
-                          properties: {
-                            title: { type: "STRING" },
-                            venue: { type: "STRING" },
-                            date: { type: "STRING" },
-                            desc: { type: "STRING" },
-                            price: { type: "STRING" }
-                          },
-                          required: ["title", "venue", "date", "desc", "price"]
-                        }
-                      }
-                    },
-                    required: ["name", "events"]
-                  }
-                }
-              },
-              required: ["week", "categories"]
-            }
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        
+        // Using a direct fetch call to bypass library version conflicts
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: "Generate a Helsinki weekly events digest for April 2026 in JSON format. Use categories with name and events list (title, venue, date, desc, price)." }] }],
+              generationConfig: {
+                responseMimeType: "application/json"
+              }
+            })
           }
-        });
+        );
 
-        const data = JSON.parse(response.text || "{}");
+        const rawData = await response.json();
+        
+        if (rawData.error) {
+          throw new Error(rawData.error.message);
+        }
+
+        const textResponse = rawData.candidates[0].content.parts[0].text;
+        const data = JSON.parse(textResponse);
         setEvents(data);
       } catch (e: any) {
         console.error("AI Error:", e);
