@@ -25,16 +25,16 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+ useEffect(() => {
     const generate = async () => {
       try {
-        // Explicitly using the key from Vercel environment variables
         const ai = new GoogleGenAI({ 
           apiKey: import.meta.env.VITE_GEMINI_API_KEY 
         });
 
         const response = await ai.models.generateContent({
-          model: "gemini-1.5-flash-latest",
+          // CHANGE THIS LINE TO EXACTLY THIS:
+          model: "models/gemini-1.5-flash", 
           contents: "Generate a Helsinki weekly events digest for April 2026. Use real Helsinki venues.",
           config: {
             responseMimeType: "application/json",
