@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { GoogleGenAI } from "@google/genai";
 import { LISTINGS } from "../constants";
 import { supabase } from "../lib/supabase";
-import { Lock, Unlock, Send, RefreshCw, ExternalLink } from "lucide-react";
+import { Lock, Unlock, Send, ExternalLink } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -37,16 +37,7 @@ export default function ChatBot({
   const [verifyForm, setVerifyForm] = useState({ email: "", ref: "" });
   const [verifyError, setVerifyError] = useState("");
 
-  const idMap: Record<string, string> = {
-    "1": "959da37c-ea29-4d34-b007-6fc299f5eed8", 
-    "2": "53747ce3-557c-46ca-b3b9-bf499146af6e", 
-    "3": "9d9330dd-ffd6-4f7e-a293-4423c0d3dde4"
-  };
-
-  const getDbUuid = (id: string | null) => {
-    if (!id) return null;
-    return idMap[id] || id;
-  };
+  const apiKey = "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0";
 
   useEffect(() => {
     const fetchAllListings = async () => {
@@ -126,7 +117,6 @@ export default function ChatBot({
     setMsgs(p => [...p, { role: "user", text: txt }]);
     setLoading(true);
 
-    const apiKey = "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0";
     const genAI = new GoogleGenAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -134,9 +124,9 @@ export default function ChatBot({
       const result = await model.generateContent(txt);
       const response = await result.response;
       const reply = response.text().replace(/\*\*/g, "");
-      
       setMsgs(p => [...p, { role: "assistant", text: reply }]);
     } catch (e) {
+      console.error("AI Error:", e);
       setMsgs(p => [...p, { role: "assistant", text: "I'm having a connection issue. Please try again." }]);
     } finally {
       setLoading(false);
