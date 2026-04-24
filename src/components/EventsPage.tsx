@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { C } from "../constants";
 
 interface Event {
@@ -28,48 +28,17 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const generate = async () => {
       try {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
-
-        const response = await ai.models.generateContent({
+        const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
+        const model = ai.getGenerativeModel({
           model: "gemini-1.5-flash",
-          contents: `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues.`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                week: { type: Type.STRING },
-                categories: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      name: { type: Type.STRING },
-                      events: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            title: { type: Type.STRING },
-                            venue: { type: Type.STRING },
-                            date: { type: Type.STRING },
-                            desc: { type: Type.STRING },
-                            price: { type: Type.STRING }
-                          },
-                          required: ["title", "venue", "date", "desc", "price"]
-                        }
-                      }
-                    },
-                    required: ["name", "events"]
-                  }
-                }
-              },
-              required: ["week", "categories"]
-            }
-          }
+          generationConfig: { responseMimeType: "application/json" }
         });
 
-        const data = JSON.parse(response.text || "{}");
+        const result = await model.generateContent(
+          `Generate a Helsinki weekly events digest for the current week. Today is ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Use real Helsinki venues. Return JSON with this exact structure: { "week": "string describing the week range", "categories": [{ "name": "category name", "events": [{ "title": "event title", "venue": "venue name", "date": "date string", "desc": "short description", "price": "price or Free" }] }] }`
+        );
+
+        const data = JSON.parse(result.response.text());
         setEvents(data);
       } catch (e: any) {
         setError(e.message);
