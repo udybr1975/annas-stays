@@ -10,32 +10,37 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
       try {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         
-        // This is the most stable, direct way to call Gemini without any libraries
+        // Gemini 1.5 was retired. We are switching to the stable 2.5 Flash model.
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{
                 parts: [{
-                  text: "List 5-7 real events happening in Helsinki this week (late April 2026). Return ONLY a JSON object: { \"week\": \"April 20-27, 2026\", \"categories\": [ { \"name\": \"Culture & Music\", \"events\": [ { \"title\": \"Event Name\", \"venue\": \"Venue Name\", \"date\": \"Date\", \"desc\": \"Short description\", \"price\": \"Price or Free\" } ] } ] }"
+                  text: "List 5-7 real events happening in Helsinki this week (April 2026). Return ONLY a JSON object: { \"week\": \"April 2026\", \"categories\": [ { \"name\": \"Events\", \"events\": [ { \"title\": \"Name\", \"venue\": \"Venue\", \"date\": \"Date\", \"desc\": \"Desc\", \"price\": \"Price\" } ] } ] }"
                 }]
               }],
-              generationConfig: { responseMimeType: "application/json" }
+              generationConfig: { 
+                responseMimeType: "application/json" 
+              }
             })
           }
         );
 
         const result = await response.json();
 
-        if (result.error) throw new Error(result.error.message);
+        if (result.error) {
+          // If 2.5 is also busy, we try the newest Gemini 3 Flash as a fallback
+          throw new Error(result.error.message);
+        }
 
         const text = result.candidates[0].content.parts[0].text;
         setEvents(JSON.parse(text));
       } catch (e: any) {
         console.error("Helsinki Guide Error:", e);
-        setError("Our AI guide is resting. Please check back in a moment!");
+        setError("The AI models are updating. Please try again in a few seconds.");
       } finally {
         setLoading(false);
       }
@@ -43,7 +48,6 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
 
     fetchEvents();
   }, []);
-
   return (
     <div className="fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
       <div 
