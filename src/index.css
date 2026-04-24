@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&family=Dancing+Script:wght@400;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", serif;
+  --font-cursive: "Dancing Script", cursive;
+
+  --color-cream: #F7F4EF;
+  --color-warm-white: #FDFCFA;
+  --color-birch: #C8B89A;
+  --color-clay: #B09B89;
+  --color-sage: #8DA399;
+  --color-forest: #3D4F3E;
+  --color-charcoal: #2C2C2A;
+  --color-mist: #E8E3DC;
+  --color-muted: #7A756E;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:none; } }
+
+.hero-animate > * { animation: fadeUp 0.65s ease both; }
+
+.img-zoom-container { overflow: hidden; position: relative; }
+.img-zoom-container img { transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.img-zoom-container:hover img { transform: scale(1.08); }
+
+@media(max-width:768px) {
+  .hero-grid { grid-template-columns: 1fr !important; min-height: auto !important; }
+  .hero-right { display: none !important; }
+  .hero-left { padding: 3rem 1.5rem !important; }
+  .hero-title { font-size: 3rem !important; }
+  .stays-grid { grid-template-columns: 1fr !important; }
+  .guide-grid { grid-template-columns: 1fr !important; gap: 2rem !important; }
+  .guide-cards { grid-template-columns: 1fr 1fr !important; }
+  .extras-grid { grid-template-columns: 1fr !important; }
+  .about-grid { grid-template-columns: 1fr !important; }
+  .contact-grid { grid-template-columns: 1fr !important; gap: 2rem !important; }
+  .reviews-grid { grid-template-columns: 1fr !important; }
+  .nav-wrap { padding: 1rem 1rem !important; flex-wrap: wrap !important; }
+  .nav-links { gap: 10px !important; flex-wrap: wrap !important; }
+  .sec-pad { padding: 3rem 1.5rem !important; }
+  .footer-grid { grid-template-columns: 1fr !important; text-align: center !important; }
+}
