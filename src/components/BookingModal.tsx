@@ -302,7 +302,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   };
 
   const sendConfirmationEmail = async (id: string, ref: string, email: string, firstName: string, status: string = 'confirmed') => {
-    const IS_TESTING = true;
+    const IS_TESTING = false;
     const TEST_EMAIL = "udy.bar.yosef@gmail.com";
 
     try {
@@ -384,7 +384,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   const isValidStay = nights >= minStay;
 
   const fi = (label: string, key: keyof typeof form, type?: string, ph?: string) => (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">hh
       <label className="text-[0.62rem] tracking-widest uppercase text-muted font-sans">{label}</label>
       <input
         type={type || "text"}
