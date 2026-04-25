@@ -4,41 +4,59 @@ import { generateBookingEmailHtml } from '../src/lib/emailUtils.js';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  // Only allow POST requests
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
     const body = req.body || {};
+    
+    /**
+     * 1. FIND THE RECIPIENT
+     * This checks all possible locations for the guest's email address
+     * (Supports both the Booking Form and the Admin Dashboard formats)
+     */
     const recipientEmail = body.to || body.guest?.email || body.guest?.em || body.email;
 
     if (!recipientEmail) {
+      console.error("Email Error: No recipient found in request body", body);
       return res.status(400).json({ error: "No recipient email found." });
     }
 
-    // Since Resend is being picky about 'info@', we try sending from the domain root
-    // This often works even when SPF/MX are 'failing' in the dashboard
-    const fromAddress = "Anna's Stays <onboarding@resend.dev>"; 
-    
-    // NOTE: Once we see a SUCCESS, we will change 'onboarding@resend.dev' 
-    // to 'hello@anna-stays.fi'. We use onboarding now just to break the 403 error.
+    /**
+     * 2. DEFINE SENDER INFO
+     * Now that DKIM is verified, we use your professional address.
+     */
+    const fromAddress = "Anna's Stays <info@anna-stays.fi>";
+    const replyToAddress = "info@anna-stays.fi";
 
+    // Check if this is a manual message from the Admin Dashboard
     const isDashboardMessage = !!body.html;
 
+    /**
+     * 3. SEND THE EMAIL
+     */
     const { data, error } = await resend.emails.send({
       from: fromAddress,
       to: [recipientEmail],
-      reply_to: "info@anna-stays.fi", // Guests reply to your real Google inbox
-      subject: body.subject || (isDashboardMessage ? "Message from Anna's Stays" : `Booking Confirmed`),
-      html: isDashboardMessage ? body.html : generateBookingEmailHtml(body.booking || {}, body.listing || {}, body.guest || {}),
+      reply_to: replyToAddress,
+      subject: body.subject || (isDashboardMessage ? "Message regarding your stay" : "Booking Confirmed!"),
+      html: isDashboardMessage 
+        ? body.html 
+        : generateBookingEmailHtml(body.booking || {}, body.listing || {}, body.guest || {}),
     });
 
     if (error) {
-      console.error("Resend Error Details:", error);
+      console.error("Resend API Error:", error);
       return res.status(400).json(error);
     }
 
+    console.log("Email sent successfully to:", recipientEmail);
     return res.status(200).json({ success: true, data });
 
   } catch (err) {
+    console.error("Server Error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 }
