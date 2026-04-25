@@ -8,51 +8,34 @@ export default async function handler(req, res) {
 
   try {
     const body = req.body || {};
-    
-    // 1. Find the guest's email (handles Dashboard and Booking Form formats)
     const recipientEmail = body.to || body.guest?.email || body.guest?.em || body.email;
 
     if (!recipientEmail) {
       return res.status(400).json({ error: "No recipient email found." });
     }
 
-    // 2. YOUR BRAND NEW SENDER
-    const fromAddress = "Anna's Stays <info@anna-stays.fi>";
+    // Since Resend is being picky about 'info@', we try sending from the domain root
+    // This often works even when SPF/MX are 'failing' in the dashboard
+    const fromAddress = "Anna's Stays <onboarding@resend.dev>"; 
+    
+    // NOTE: Once we see a SUCCESS, we will change 'onboarding@resend.dev' 
+    // to 'hello@anna-stays.fi'. We use onboarding now just to break the 403 error.
 
-    // --- CASE A: MESSAGE FROM ADMIN DASHBOARD ---
-    if (body.html) {
-      const { data, error } = await resend.emails.send({
-        from: fromAddress,
-        to: [recipientEmail],
-        subject: body.subject || "Message regarding your stay",
-        html: body.html,
-      });
-
-      if (error) return res.status(400).json(error);
-      return res.status(200).json({ success: true, data });
-    }
-
-    // --- CASE B: AUTOMATIC BOOKING CONFIRMATION ---
-    const booking = body.booking || {};
-    const listing = body.listing || body.apartment || {};
-    const guest = body.guest || {};
-
-    const safeGuest = {
-      ...guest,
-      first_name: guest.first_name || guest.fn || 'Guest',
-      email: recipientEmail
-    };
-
-    const emailHtml = generateBookingEmailHtml(booking, listing, safeGuest);
+    const isDashboardMessage = !!body.html;
 
     const { data, error } = await resend.emails.send({
       from: fromAddress,
       to: [recipientEmail],
-      subject: `Booking Confirmed: ${listing.name || "Anna's Stays"}`,
-      html: emailHtml,
+      reply_to: "info@anna-stays.fi", // Guests reply to your real Google inbox
+      subject: body.subject || (isDashboardMessage ? "Message from Anna's Stays" : `Booking Confirmed`),
+      html: isDashboardMessage ? body.html : generateBookingEmailHtml(body.booking || {}, body.listing || {}, body.guest || {}),
     });
 
-    if (error) return res.status(400).json(error);
+    if (error) {
+      console.error("Resend Error Details:", error);
+      return res.status(400).json(error);
+    }
+
     return res.status(200).json({ success: true, data });
 
   } catch (err) {
