@@ -99,70 +99,48 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   };
 
   const handleReserve = async () => {
-    console.log('DEBUG: Starting booking save...');
-    
-    // STEP 0: Generate Reference Number (Single Source of Truth)
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let randomPart = '';
-    for (let i = 0; i < 8; i++) {
-      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    const finalRef = `RES-${randomPart}`;
-    setBookingRef(finalRef);
-
     if (!form.fn || !form.em) {
       alert("Please fill in name and email.");
       return;
     }
 
-    const aptId = listing?.id;
-    console.log('DEBUG: apartment_id:', aptId);
-    if (!aptId) {
-      alert("CRITICAL ERROR: Apartment ID is missing.");
-      return;
-    }
-
-    // Final overlap check
-    if (range.start && range.end) {
-      let hasOverlap = false;
-      let curr = new Date(range.start);
-      const last = new Date(range.end);
-      while (curr < last) {
-        const checkStr = curr.toISOString().split('T')[0];
-        if (bookedDates.includes(checkStr)) {
-          hasOverlap = true;
-          break;
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-
-      if (hasOverlap) {
-        alert("Your selection includes dates that are already booked. Please choose a different range.");
-        setRange({ start: null, end: null });
-        setStep(1);
-        return;
-      }
-    }
-
     setBookingLoading(true);
-    try {
-      // STEP 1: Create Guest (Always insert a new record to preserve name at time of booking)
-      const { data: guestData, error: guestError } = await supabase
-        .from('guests')
-        .insert({
-          email: String(form.em).trim().toLowerCase(),
-          first_name: String(form.fn).trim(),
-          last_name: String(form.ln).trim()
-        })
-        .select('id')
-        .single();
 
-      if (guestError) {
-        console.error("Guest Save Error:", guestError);
-        alert(`GUEST ERROR: ${guestError.message}`);
-        setBookingLoading(false);
-        return;
+    try {
+      // 1. Call our new Stripe API
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          booking: {
+            nights: nights,
+            totalPrice: total,
+            checkIn: range.start,
+            checkOut: range.end
+          },
+          listing: listing,
+          guest: {
+            email: form.em,
+            name: `${form.fn} ${form.ln}`
+          },
+          isInstantBook: isInstantBook // This comes from your existing state
+        }),
+      });
+
+      const session = await response.json();
+
+      if (session.url) {
+        // 2. Redirect to Stripe Checkout
+        window.location.href = session.url;
+      } else {
+        throw new Error(session.error || 'Failed to create payment session');
       }
+    } catch (err: any) {
+      console.error("Payment Error:", err);
+      alert("Could not initialize payment. Please try again.");
+      setBookingLoading(false);
+    }
+};
 
       if (!guestData || !guestData.id) {
         alert("GUEST ERROR: Failed to retrieve guest ID.");
