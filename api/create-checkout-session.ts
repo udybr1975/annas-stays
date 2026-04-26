@@ -36,7 +36,7 @@ export default async function handler(req: any, res: any) {
                 // 'manual' for request-to-book (authorise only, capture later when host confirms)
                 capture_method: isInstantBook ? 'automatic' : 'manual',
               },
-              success_url: `${req.headers.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+              success_url: `${req.headers.origin}/?status=success&session_id={CHECKOUT_SESSION_ID}`,
               cancel_url: `${req.headers.origin}/`,
               customer_email: guest.email,
               metadata: {
