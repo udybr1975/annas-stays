@@ -5,9 +5,8 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";
 import { supabase } from "../lib/supabase";
 import { resolveImageUrl } from "../lib/imageUtils";
-import { Info, RefreshCw, Check, Phone, Mail, FileText, Send, Loader2 } from "lucide-react";
+import { Info, RefreshCw, Check, Phone, Mail, FileText, Send } from "lucide-react";
 
-// Import Swiper styles
 import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
@@ -32,8 +31,6 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
   const [bookedDates, setBookedDates] = useState<string[]>([]);
   const [guestCount, setGuestCount] = useState<number>(0);
   const [isInstantBook, setIsInstantBook] = useState<boolean>(true);
-  
-  // States for fetching the final booking data after Stripe redirect
   const [finalBookingData, setFinalBookingData] = useState<any>(null);
   const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -42,7 +39,6 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
     fetchBookedDates();
     fetchInstantBookStatus();
 
-    // If we are starting at Step 4 (Back from Stripe), poll for the database record
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
     if (initialStep === 4 && sessionId) {
@@ -50,16 +46,15 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
     }
   }, [listing.id, refreshTrigger]);
 
-  // Logic to find the record the Webhook just created
   const pollForBooking = async (sessionId: string) => {
     setIsFetchingResult(true);
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 15;
 
     const checkDB = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('bookings')
-        .select('*')
+        .select('*, guests(*)')
         .eq('stripe_session_id', sessionId)
         .single();
 
@@ -68,7 +63,7 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
         setIsFetchingResult(false);
       } else if (attempts < maxAttempts) {
         attempts++;
-        setTimeout(checkDB, 1500); // Check every 1.5 seconds
+        setTimeout(checkDB, 2000);
       } else {
         setIsFetchingResult(false);
       }
@@ -104,7 +99,6 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
   const handleReserve = async () => {
     if (!form.fn || !form.em) { alert("Please fill in name and email."); return; }
     setBookingLoading(true);
-
     try {
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -202,3 +196,98 @@ export default function BookingModal({ listing, onClose, initialStep = 1 }: Book
                   <span className="text-sm font-bold uppercase tracking-widest font-sans">Total</span>
                   <span className="font-serif text-3xl text-forest">€{total}</span>
                 </div>
+                <button disabled={!isValidStay || guestCount === 0} onClick={() => setStep(2)} className={`w-full p-4 text-xs tracking-widest uppercase transition-all ${isValidStay && guestCount > 0 ? "bg-forest text-white cursor-pointer" : "bg-mist text-muted cursor-default"}`}>Continue to Extras</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="max-w-[440px] mx-auto">
+            <h2 className="font-serif text-2xl font-light mb-6 text-center">Enhance your stay</h2>
+            {[{ k: "car", l: "Car Rental", s: "Rental car ready on arrival.", p: "€55/day", v: car, f: setCar }, { k: "tf", l: "Airport Transfer", s: "Private transfer from Vantaa.", p: "€35 flat", v: transfer, f: setTransfer }].map(x => (
+              <div key={x.k} onClick={() => x.f(!x.v)} className={`border p-5 mb-2.5 cursor-pointer transition-colors ${x.v ? "border-clay bg-cream" : "border-mist"}`}>
+                <div className="flex justify-between mb-1"><span className="font-serif text-lg">{x.l}</span><span className="text-[0.72rem] text-clay">{x.v ? "✓ Added" : x.p}</span></div>
+                <p className="text-[0.78rem] text-muted font-light">{x.s}</p>
+              </div>
+            ))}
+            <div className="flex gap-2 mt-8">
+              <button onClick={() => setStep(1)} className="flex-1 p-3.5 border border-mist uppercase text-[0.72rem] tracking-widest">Back</button>
+              <button onClick={() => setStep(3)} className="flex-[2] p-3.5 bg-forest text-white uppercase text-[0.72rem] tracking-widest">Continue</button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="max-w-[440px] mx-auto">
+            <h2 className="font-serif text-2xl font-light mb-6 text-center">Guest Information</h2>
+            <div className="grid grid-cols-2 gap-2.5 mb-2.5">{fi("First name", "fn")}{fi("Last name", "ln")}</div>
+            {fi("Email", "em", "email")}
+            <div className="mt-8 flex gap-2">
+              <button onClick={() => setStep(2)} className="flex-1 p-3.5 border border-mist uppercase text-[0.72rem] tracking-widest">Back</button>
+              <button onClick={handleReserve} disabled={bookingLoading} className="flex-[2] p-3.5 bg-forest text-white uppercase text-[0.72rem] tracking-widest">
+                {bookingLoading ? "Connecting..." : "Pay & Confirm"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="py-2 text-center">
+            {isFetchingResult ? (
+              <div className="flex flex-col items-center py-20">
+                <div className="w-12 h-12 border-4 border-clay border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="font-serif text-xl">Finalizing your booking...</p>
+              </div>
+            ) : (
+              <>
+                <div className="w-12 h-12 bg-forest/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Check className="text-forest" size={24} />
+                </div>
+                <h3 className="font-serif text-3xl font-light mb-6 text-charcoal">
+                  {isInstantBook ? "Booking Confirmed!" : "Request Received!"}
+                </h3>
+
+                <div className="w-full h-48 mb-6 overflow-hidden bg-mist">
+                  <img src={resolveImageUrl(listing.imgs[0])} className="w-full h-full object-cover" alt={listing.name} />
+                </div>
+
+                <div className="bg-[#FAF9F6] p-8 border border-mist/50 mb-8 relative text-left">
+                  <p className="font-serif text-xl italic text-charcoal mb-4">Dear {finalBookingData?.guests?.first_name || 'Guest'},</p>
+                  <p className="font-serif text-[1.05rem] text-muted leading-loose italic mb-8">
+                    I'm so glad you chose my {listing.name} for your stay. Helsinki is a magical city, and we've prepared everything to make your visit truly special. We'll send your personal entry codes 24 hours before you arrive.
+                  </p>
+                  <p className="font-cursive text-3xl text-clay mb-0">Anna Humalainen</p>
+                  <p className="text-[0.6rem] tracking-[0.2em] uppercase text-muted font-sans">Host</p>
+                </div>
+
+                <div className="border-t border-b border-mist py-6 mb-8 grid grid-cols-2 gap-y-6 text-left">
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-widest text-muted mb-1">Dates</p>
+                    <p className="text-sm font-sans">{finalBookingData?.check_in || '...'} — {finalBookingData?.check_out || '...'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-widest text-muted mb-1">Guests</p>
+                    <p className="text-sm font-sans">{finalBookingData?.guest_count || '2'} Guests</p>
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-widest text-muted mb-1">Reference</p>
+                    <p className="text-sm font-sans font-medium text-clay">{finalBookingData?.booking_reference || 'RES-PENDING'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-widest text-muted mb-1">Total Paid</p>
+                    <p className="text-sm font-sans font-medium">€{finalBookingData?.total_price || total}</p>
+                  </div>
+                </div>
+
+                <button onClick={onClose} className="w-full p-4 bg-charcoal text-white font-sans text-[0.7rem] tracking-widest uppercase hover:bg-charcoal/90 transition-all">
+                  Return Home
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
