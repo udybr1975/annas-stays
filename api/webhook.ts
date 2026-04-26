@@ -23,11 +23,12 @@ export default async function handler(req: any, res: any) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const m = session.metadata;
-      if (!m) return res.status(400).send('No metadata');
+      if (!m) return res.status(400).send('No metadata found');
 
+      // Generate the RES- format reference
       const ref = `RES-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
 
-      // 1. Save Guest
+      // TABLE 1: Update 'guests'
       const { data: guestData, error: gErr } = await supabase
         .from('guests')
         .upsert({ 
@@ -38,7 +39,7 @@ export default async function handler(req: any, res: any) {
 
       if (gErr) throw gErr;
 
-      // 2. Save Booking
+      // TABLE 2: Update 'bookings'
       const { error: bErr } = await supabase.from('bookings').insert({
         apartment_id: m.apartmentId,
         guest_id: guestData.id,
@@ -53,14 +54,11 @@ export default async function handler(req: any, res: any) {
 
       if (bErr) throw bErr;
 
-      // 3. CORRECTED NTFY URL
+      // Notification to your phone
       await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
         method: 'POST',
         body: `New Booking! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}. Dates: ${m.checkIn} to ${m.checkOut}. Ref: ${ref}`,
-        headers: { 
-          'Title': "Anna's Stays: New Reservation",
-          'Tags': 'house,euro'
-        }
+        headers: { 'Title': "Anna's Stays: New Reservation", 'Tags': 'house,euro' }
       });
     }
     return res.status(200).json({ received: true });
