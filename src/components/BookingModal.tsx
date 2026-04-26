@@ -18,22 +18,20 @@ import "swiper/css/autoplay";
 interface BookingModalProps {
   listing: any;
   onClose: () => void;
+  initialStep?: number; // Added to support direct access to success state
 }
 
-export default function BookingModal({ listing, onClose }: BookingModalProps) {
-  const [step, setStep] = useState(1);
+export default function BookingModal({ listing, onClose, initialStep = 1 }: BookingModalProps) {
+  const [step, setStep] = useState(initialStep);
   const [range, setRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [car, setCar] = useState(false);
   const [transfer, setTransfer] = useState(false);
   const [form, setForm] = useState({ fn: "", ln: "", em: "", message: "" });
-  const [done, setDone] = useState(false);
   const [specialPrices, setSpecialPrices] = useState<any[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookedDates, setBookedDates] = useState<string[]>([]);
-  const [bookingId, setBookingId] = useState<string | null>(null);
-  const [bookingRef, setBookingRef] = useState<string | null>(null);
   const [guestCount, setGuestCount] = useState<number>(0);
   const [showEmailTemplate, setShowEmailTemplate] = useState(false);
   const [emailStatus, setEmailStatus] = useState<{ sent: boolean; error: boolean; email?: string }>({ sent: false, error: false });
@@ -107,7 +105,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     setBookingLoading(true);
 
     try {
-      // Final overlap check before redirecting
       if (range.start && range.end) {
         let hasOverlap = false;
         let curr = new Date(range.start);
@@ -129,7 +126,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
         }
       }
 
-      // STRIPE REDIRECT LOGIC
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -261,15 +257,16 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       <div className={`bg-warm-white w-full ${step === 1 ? "max-w-[1000px]" : "max-w-[520px]"} max-h-[92vh] overflow-y-auto p-6 md:p-10 relative font-sans transition-all duration-300`}>
         <button onClick={onClose} className="absolute top-4 right-5 bg-none border-none text-xl cursor-pointer text-muted z-10">✕</button>
         
-        {/* Step Indicator */}
-        <div className="flex gap-1.5 mb-7 max-w-[440px] mx-auto">
-          {["Details", "Extras", "Review"].map((l, i) => (
-            <div key={l} className="flex-1">
-              <div className={`h-0.5 mb-1 ${step > i + 1 ? "bg-clay" : step === i + 1 ? "bg-forest" : "bg-mist"}`} />
-              <span className={`text-[0.6rem] tracking-widest uppercase font-sans ${step === i + 1 ? "text-forest" : "text-muted"}`}>{l}</span>
-            </div>
-          ))}
-        </div>
+        {step < 4 && (
+          <div className="flex gap-1.5 mb-7 max-w-[440px] mx-auto">
+            {["Details", "Extras", "Review"].map((l, i) => (
+              <div key={l} className="flex-1">
+                <div className={`h-0.5 mb-1 ${step > i + 1 ? "bg-clay" : step === i + 1 ? "bg-forest" : "bg-mist"}`} />
+                <span className={`text-[0.6rem] tracking-widest uppercase font-sans ${step === i + 1 ? "text-forest" : "text-muted"}`}>{l}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {step === 1 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -380,7 +377,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                     </div>
                   </div>
                 )}
-                
                 <button
                   disabled={(nights > 0 && !isValidStay) || guestCount === 0}
                   onClick={() => nights > 0 && isValidStay && guestCount > 0 && setStep(2)}
@@ -423,7 +419,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             <h2 className="font-serif text-2xl font-light mb-6 text-center">Guest Information</h2>
             <div className="grid grid-cols-2 gap-2.5 mb-2.5">{fi("First name", "fn", "text", "Anna")}{fi("Last name", "ln", "text", "Smith")}</div>
             {fi("Email", "em", "email", "your@email.com")}
-            
             {!isInstantBook && (
               <div className="my-4">
                 <label className="block text-[0.65rem] uppercase tracking-widest text-muted font-sans font-bold mb-1.5">Message to Host</label>
@@ -435,7 +430,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 />
               </div>
             )}
-
             <div className="mt-6 flex flex-col gap-3">
               <div className="p-3.5 bg-cream text-[0.72rem] text-muted leading-relaxed border-l-2 border-clay">
                 {isInstantBook 
@@ -453,6 +447,38 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="py-2 text-center">
+            <div className="w-16 h-16 bg-forest/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="text-forest" size={32} />
+            </div>
+            <h3 className="font-serif text-3xl font-light mb-6 text-charcoal">
+              {isInstantBook ? "Booking Confirmed!" : "Request Received!"}
+            </h3>
+
+            <div className="bg-[#FAF9F6] p-8 border border-mist/50 shadow-sm mb-8 relative text-left">
+              <div className="absolute top-0 left-0 w-1 h-full bg-clay/20" />
+              <p className="font-serif text-xl italic text-charcoal mb-4">Dear Guest,</p>
+              <p className="font-serif text-[1.05rem] text-muted leading-loose italic mb-8">
+                {isInstantBook ? (
+                  <>Thank you for choosing <span className="text-charcoal not-italic font-medium">{listing.name}</span>. Helsinki is magical, and we have prepared everything to make your stay special. We'll send your entry codes 24 hours before arrival.</>
+                ) : (
+                  <>We've received your request for <span className="text-charcoal not-italic font-medium">{listing.name}</span>. We are currently reviewing it and will notify you as soon as the status is updated.</>
+                )}
+              </p>
+              <p className="font-cursive text-3xl text-clay mb-0">Anna Humalainen</p>
+              <p className="text-[0.6rem] tracking-[0.2em] uppercase text-muted font-sans">Host</p>
+            </div>
+
+            <button 
+              onClick={onClose}
+              className="w-full p-4 bg-charcoal text-white font-sans text-[0.7rem] tracking-widest uppercase hover:bg-charcoal/90 transition-all"
+            >
+              Return Home
+            </button>
           </div>
         )}
       </div>
