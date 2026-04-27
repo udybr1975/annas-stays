@@ -26,11 +26,7 @@ export default async function handler(req: any, res: any) {
 
       // 1. GUEST LOGIC
       let guestId;
-      const { data: existingGuest } = await supabase
-        .from('guests')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle();
+      const { data: existingGuest } = await supabase.from('guests').select('id').eq('email', email).maybeSingle();
 
       if (existingGuest) {
         guestId = existingGuest.id;
@@ -43,32 +39,29 @@ export default async function handler(req: any, res: any) {
         guestId = newGuest.id;
       }
 
-      // 2. BOOKING LOGIC (Simplified to guarantee success)
-      // I am removing 'booking_reference' for one test to bypass the schema cache error
+      // 2. MINIMAL BOOKING LOGIC
+      // I have removed booking_reference, stripe_session_id, and guest_count 
+      // to bypass the current Supabase cache errors.
       const { error: bErr } = await supabase.from('bookings').insert({
         apartment_id: m.apartmentId,
         guest_id: guestId,
         check_in: m.checkIn,
         check_out: m.checkOut,
         total_price: parseFloat(m.totalPrice),
-        status: m.isInstant === 'true' ? 'confirmed' : 'pending',
-        stripe_session_id: session.id,
-        guest_count: parseInt(m.guestCount)
+        status: m.isInstant === 'true' ? 'confirmed' : 'pending'
       });
 
       if (bErr) {
-        console.error("Supabase Insert Error:", bErr.message);
+        console.error("Minimal Insert Error:", bErr.message);
         return res.status(400).send(`Supabase Error: ${bErr.message}`);
       }
 
-      // 3. NTFY
-      try {
-        await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
-          method: 'POST',
-          body: `New Booking! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}.`,
-          headers: { 'Title': "Anna's Stays", 'Tags': 'house' }
-        });
-      } catch (e) { /* ignore */ }
+      // 3. NOTIFICATION
+      await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+        method: 'POST',
+        body: `Success! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}.`,
+        headers: { 'Title': "Anna's Stays", 'Tags': 'house' }
+      });
     }
 
     return res.status(200).json({ received: true });
