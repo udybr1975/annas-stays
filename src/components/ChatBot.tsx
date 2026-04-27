@@ -360,7 +360,7 @@ export default function ChatBot({
         model: "gemini-2.5-flash",
         contents: [
           ...history.map(h => ({
-            role: h.role,
+            role: h.role === "assistant" ? "model" : h.role,
             parts: h.parts
           })),
           { role: "user", parts: [{ text: txt }] }
@@ -374,7 +374,7 @@ export default function ChatBot({
       const rawReply = response.text || "I'm sorry, I couldn't generate a response.";
       const reply = rawReply.replace(/\*\*/g, "");
       setMsgs(p => [...p, { role: "assistant", text: reply }]);
-      setHistory(p => [...p, { role: "user", parts: [{ text: txt }] }, { role: "assistant", parts: [{ text: reply }] }]);
+      setHistory(p => [...p, { role: "user", parts: [{ text: txt }] }, { role: "model", parts: [{ text: reply }] }]);
     } catch (e) {
       console.error("AI Error:", e);
       setMsgs(p => [...p, { role: "assistant", text: "I'm having a connection hiccup. Could you try that again?" }]);
