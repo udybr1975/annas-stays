@@ -22,10 +22,9 @@ export default async function handler(req: any, res: any) {
       const m = session.metadata;
       if (!m) return res.status(400).send('No metadata');
 
-      const ref = `RES-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       const email = session.customer_details?.email?.toLowerCase().trim();
 
-      // --- GUEST LOGIC (Returning Guest Fix) ---
+      // 1. GUEST LOGIC
       let guestId;
       const { data: existingGuest } = await supabase
         .from('guests')
@@ -38,17 +37,14 @@ export default async function handler(req: any, res: any) {
       } else {
         const { data: newGuest, error: gErr } = await supabase
           .from('guests')
-          .insert({ 
-            email: email,
-            first_name: m.guestFirstName,
-            last_name: m.guestLastName 
-          })
+          .insert({ email, first_name: m.guestFirstName, last_name: m.guestLastName })
           .select('id').single();
         if (gErr) throw gErr;
         guestId = newGuest.id;
       }
 
-      // --- BOOKING LOGIC (Matching your DB image) ---
+      // 2. BOOKING LOGIC (Simplified to guarantee success)
+      // I am removing 'booking_reference' for one test to bypass the schema cache error
       const { error: bErr } = await supabase.from('bookings').insert({
         apartment_id: m.apartmentId,
         guest_id: guestId,
@@ -56,19 +52,21 @@ export default async function handler(req: any, res: any) {
         check_out: m.checkOut,
         total_price: parseFloat(m.totalPrice),
         status: m.isInstant === 'true' ? 'confirmed' : 'pending',
-        booking_reference: ref,
         stripe_session_id: session.id,
         guest_count: parseInt(m.guestCount)
       });
 
-      if (bErr) throw bErr;
+      if (bErr) {
+        console.error("Supabase Insert Error:", bErr.message);
+        return res.status(400).send(`Supabase Error: ${bErr.message}`);
+      }
 
-      // --- NTFY NOTIFICATION ---
+      // 3. NTFY
       try {
         await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
           method: 'POST',
-          body: `New Booking! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}. Ref: ${ref}`,
-          headers: { 'Title': "Anna's Stays: New Reservation", 'Tags': 'house,euro' }
+          body: `New Booking! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}.`,
+          headers: { 'Title': "Anna's Stays", 'Tags': 'house' }
         });
       } catch (e) { /* ignore */ }
     }
