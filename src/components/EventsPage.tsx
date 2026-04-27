@@ -18,16 +18,20 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    // Calculate dates inside loadEvents so they are always fresh on every click
     const now = new Date();
-    const monthYear = now.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    const today = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    const sevenDaysLater = new Date(now);
+    sevenDaysLater.setDate(now.getDate() + 7);
+    const until = sevenDaysLater.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    const weekLabel = `${today} – ${until}`;
 
+    const ai = new GoogleGenAI({ apiKey });
     const MAX_RETRIES = 3;
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        // Wait before retrying (not before first attempt)
         if (attempt > 1) {
           await new Promise(r => setTimeout(r, attempt * 2000));
         }
@@ -37,7 +41,7 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
           contents: [{
             role: "user",
             parts: [{
-              text: `Today is ${today}. List 5-7 real events happening in Helsinki between ${today} and ${until} (the next 7 days only). Do not include past events. Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: { "week": "${monthYear}", "categories": [ { "name": "Events", "events": [ { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } ] } ] }`
+              text: `Today is ${today}. List 5-7 real events happening in Helsinki between ${today} and ${until} (the next 7 days only). Do not include past events. Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: { "week": "${weekLabel}", "categories": [ { "name": "Events", "events": [ { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } ] } ] }`
             }]
           }],
           config: {
@@ -49,18 +53,17 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         const clean = text.replace(/```json|```/g, "").trim();
         setEvents(JSON.parse(clean));
         setLoading(false);
-        return; // Success — stop retrying
+        return;
 
       } catch (e: any) {
         lastError = e;
         const msg = (e?.message || "").toLowerCase();
         const isRetryable = msg.includes("503") || msg.includes("high demand") || msg.includes("unavailable") || msg.includes("overload");
         console.warn(`Helsinki Guide: attempt ${attempt} failed — ${e?.message}`);
-        if (!isRetryable) break; // Don't retry non-503 errors
+        if (!isRetryable) break;
       }
     }
 
-    // All retries exhausted
     console.error("Helsinki Guide Error:", lastError);
     setError("Helsinki events couldn't load right now — Google's AI is busy. Please try again in a moment.");
     setLoading(false);
