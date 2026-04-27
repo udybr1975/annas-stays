@@ -19,7 +19,8 @@ export default async function handler(req: any, res: any) {
       }],
       mode: 'payment',
       customer_email: guest.email,
-      success_url: `${req.headers.origin}/?status=success&session_id={CHECKOUT_SESSION_ID}&checkIn=${booking.checkIn}&checkOut=${booking.checkOut}&guestCount=${booking.guestCount}&total=${booking.totalPrice}&fn=${guest.firstName}`,
+      // FIXED: Added &apartmentId=${listing.id} so the success screen knows what to show
+      success_url: `${req.headers.origin}/?status=success&session_id={CHECKOUT_SESSION_ID}&apartmentId=${listing.id}&checkIn=${booking.checkIn}&checkOut=${booking.checkOut}&guestCount=${booking.guestCount}&total=${booking.totalPrice}&fn=${guest.firstName}`,
       cancel_url: `${req.headers.origin}/`,
       metadata: {
         apartmentId: String(listing.id),
@@ -29,7 +30,7 @@ export default async function handler(req: any, res: any) {
         guestFirstName: String(guest.firstName),
         guestLastName: String(guest.lastName),
         totalPrice: String(booking.totalPrice),
-        guestCount: String(booking.guestCount) // This MUST be here for the webhook!
+        guestCount: String(booking.guestCount) 
       },
     });
 
