@@ -2,40 +2,96 @@ import Stripe from 'stripe';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-  
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' as any });
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    return res.status(500).json({ error: 'Stripe is not configured on the server.' });
+  }
+
+  const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' as any });
   const { booking, listing, guest, isInstantBook } = req.body;
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'eur',
-          product_data: { name: listing.name, description: `${booking.nights} nights at Anna's Stays` },
-          unit_amount: Math.round(booking.totalPrice * 100),
-        },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      customer_email: guest.email,
-      // FIXED: Added &apartmentId=${listing.id} so the success screen knows what to show
-      success_url: `${req.headers.origin}/?status=success&session_id={CHECKOUT_SESSION_ID}&apartmentId=${listing.id}&checkIn=${booking.checkIn}&checkOut=${booking.checkOut}&guestCount=${booking.guestCount}&total=${booking.totalPrice}&fn=${guest.firstName}`,
-      cancel_url: `${req.headers.origin}/`,
-      metadata: {
-        apartmentId: String(listing.id),
-        checkIn: String(booking.checkIn),
-        checkOut: String(booking.checkOut),
-        isInstant: String(isInstantBook),
-        guestFirstName: String(guest.firstName),
-        guestLastName: String(guest.lastName),
-        totalPrice: String(booking.totalPrice),
-        guestCount: String(booking.guestCount) 
-      },
-    });
+  if (!booking?.referenceNumber || !listing?.id || !guest?.email) {
+    return res.status(400).json({ error: 'Missing required booking information.' });
+  }
 
-    return res.status(200).json({ url: session.url });
+  const origin = req.headers.origin || 'https://anna-stays.fi';
+
+  try {
+    if (isInstantBook) {
+      // INSTANT BOOK: Charge the full amount immediately.
+      // Webhook will then save guest + booking to Supabase as 'confirmed'.
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: guest.email,
+        line_items: [
+          {
+            price_data: {
+              currency: 'eur',
+              product_data: {
+                name: listing.name,
+                description: `${booking.nights} night stay · ${booking.checkIn} to ${booking.checkOut}`,
+              },
+              unit_amount: Math.round(booking.totalPrice * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${origin}/booking-success?session_id={CHECKOUT_SESSION_ID}&ref=${booking.referenceNumber}`,
+        cancel_url: `${origin}/`,
+        metadata: {
+          // Everything needed to create the booking in the webhook
+          referenceNumber: String(booking.referenceNumber),
+          apartmentId: String(listing.id),
+          apartmentName: String(listing.name),
+          guestFirstName: String(guest.firstName),
+          guestLastName: String(guest.lastName),
+          guestEmail: String(guest.email),
+          checkIn: String(booking.checkIn),
+          checkOut: String(booking.checkOut),
+          guestCount: String(booking.guestCount),
+          totalPrice: String(booking.totalPrice),
+          car: String(booking.car || false),
+          transfer: String(booking.transfer || false),
+          message: String(booking.message || ''),
+          isInstant: 'true',
+        },
+      });
+
+      return res.status(200).json({ url: session.url });
+
+    } else {
+      // PENDING APPROVAL: Save card without charging.
+      // Guest will only be charged when you approve in the admin dashboard.
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'setup',
+        customer_email: guest.email,
+        success_url: `${origin}/booking-success?session_id={CHECKOUT_SESSION_ID}&ref=${booking.referenceNumber}&pending=true`,
+        cancel_url: `${origin}/`,
+        metadata: {
+          referenceNumber: String(booking.referenceNumber),
+          apartmentId: String(listing.id),
+          apartmentName: String(listing.name),
+          guestFirstName: String(guest.firstName),
+          guestLastName: String(guest.lastName),
+          guestEmail: String(guest.email),
+          checkIn: String(booking.checkIn),
+          checkOut: String(booking.checkOut),
+          guestCount: String(booking.guestCount),
+          totalPrice: String(booking.totalPrice),
+          car: String(booking.car || false),
+          transfer: String(booking.transfer || false),
+          message: String(booking.message || ''),
+          isInstant: 'false',
+        },
+      });
+
+      return res.status(200).json({ url: session.url });
+    }
   } catch (err: any) {
+    console.error('Stripe checkout session error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
