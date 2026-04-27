@@ -39,9 +39,18 @@ export default async function handler(req: any, res: any) {
         guestId = newGuest.id;
       }
 
-      // 2. MINIMAL BOOKING LOGIC
-      // I have removed booking_reference, stripe_session_id, and guest_count 
-      // to bypass the current Supabase cache errors.
+      // 2. GET APARTMENT NAME (For the notification)
+      const { data: apt } = await supabase
+        .from('apartments')
+        .select('name')
+        .eq('id', m.apartmentId)
+        .single();
+
+      const apartmentName = apt?.name || "Unknown Apartment";
+
+      // 3. BOOKING LOGIC
+      // Note: We are still leaving out booking_reference and stripe_session_id 
+      // for one more deploy to ensure the schema cache has cleared.
       const { error: bErr } = await supabase.from('bookings').insert({
         apartment_id: m.apartmentId,
         guest_id: guestId,
@@ -51,16 +60,18 @@ export default async function handler(req: any, res: any) {
         status: m.isInstant === 'true' ? 'confirmed' : 'pending'
       });
 
-      if (bErr) {
-        console.error("Minimal Insert Error:", bErr.message);
-        return res.status(400).send(`Supabase Error: ${bErr.message}`);
-      }
+      if (bErr) throw bErr;
 
-      // 3. NOTIFICATION
+      // 4. THE CORRECT NOTIFICATION FORMAT
+      const ntfyMessage = `💰 New Booking! Guest: ${m.guestFirstName} ${m.guestLastName} (${m.guestCount} guests) | Apartment: ${apartmentName} | Dates: ${m.checkIn} - ${m.checkOut} | Total: ${m.totalPrice}€ 🎉`;
+
       await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
         method: 'POST',
-        body: `Success! 🏠 ${m.guestFirstName} reserved ${m.apartmentId}.`,
-        headers: { 'Title': "Anna's Stays", 'Tags': 'house' }
+        body: ntfyMessage,
+        headers: { 
+          'Title': "Anna's Stays: New Reservation",
+          'Tags': 'money,house,party_popper' 
+        }
       });
     }
 
