@@ -396,7 +396,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     try {
       const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite-preview-06-17-lite-preview-06-17",
+        model: "gemini-2.5-flash",
         contents: `I have a list of apartment rules/info. Please split them into a JSON array of objects with 'category', 'content', and 'is_private' (boolean). 
         Rules for is_private: True if it contains sensitive info like WiFi passwords, door codes, or exact check-in steps. False for general features, neighborhood info, or public amenities.
         
@@ -445,7 +445,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     try {
       const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite-preview-06-17-lite-preview-06-17",
+        model: "gemini-2.5-flash",
         contents: "Find major events in Helsinki 2026. Prioritize: Lux Helsinki (Jan 6-11), Vappu (Apr 30-May 1), Midsummer (Jun 19-20), Tuska Festival (Jun 26-28), Helsinki Cup (Jul 6-11), Flow Festival (Aug 14-16), Helsinki Design Week (Aug 28-Sep 6), Slush (Nov 18-19). Return a JSON array of objects with 'name', 'start', 'end'.",
         config: {
           tools: [{ googleSearch: {} }],
