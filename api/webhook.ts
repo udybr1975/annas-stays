@@ -43,4 +43,126 @@ export default async function handler(req: any, res: any) {
     return res.status(400).send('Webhook Error: ' + err.message);
   }
 
-  if (event.type !== 'checkou
+  if (event.type !== 'checkout.session.completed') {
+    return res.status(200).json({ received: true, ignored: true });
+  }
+
+  const session = event.data.object as any;
+  const m = session.metadata;
+
+  if (!m || !m.referenceNumber || !m.apartmentId || !m.guestEmail) {
+    console.error('Webhook: Missing metadata');
+    return res.status(400).send('Missing metadata');
+  }
+
+  const { data: existing } = await supabase
+    .from('bookings')
+    .select('id')
+    .eq('reference_number', m.referenceNumber)
+    .maybeSingle();
+
+  if (existing) {
+    console.log('Webhook: ' + m.referenceNumber + ' already exists - skipping');
+    return res.status(200).json({ received: true, duplicate: true });
+  }
+
+  // Upsert guest - if email exists update name, if not create new
+  const { data: guestData, error: guestError } = await supabase
+    .from('guests')
+    .upsert({
+      email: m.guestEmail.toLowerCase().trim(),
+      first_name: m.guestFirstName || '',
+      last_name: m.guestLastName || '',
+    }, {
+      onConflict: 'email',
+      ignoreDuplicates: false,
+    })
+    .select('id')
+    .single();
+
+  if (guestError || !guestData || !guestData.id) {
+    console.error('Webhook: Failed to save guest:', guestError ? guestError.message : 'unknown');
+    return res.status(500).send('Failed to save guest');
+  }
+
+  const isInstant = m.isInstant === 'true';
+  const status = isInstant ? 'confirmed' : 'pending';
+
+  const { data: bookingData, error: bookingError } = await supabase
+    .from('bookings')
+    .insert({
+      apartment_id: m.apartmentId,
+      guest_id: guestData.id,
+      check_in: m.checkIn,
+      check_out: m.checkOut,
+      total_price: parseFloat(m.totalPrice),
+      guest_count: parseInt(m.guestCount, 10),
+      status: status,
+      reference_number: m.referenceNumber,
+      stripe_session_id: session.id,
+      stripe_setup_intent_id: isInstant ? null : (session.setup_intent || null),
+      admin_needs_attention: true,
+      notes: m.message || null,
+    })
+    .select('id')
+    .single();
+
+  if (bookingError || !bookingData || !bookingData.id) {
+    console.error('Webhook: Failed to save booking:', bookingError ? bookingError.message : 'unknown');
+    return res.status(500).send('Failed to save booking');
+  }
+
+  console.log('Webhook: Booking ' + m.referenceNumber + ' saved as ' + status);
+
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const subject = isInstant
+        ? 'Booking Confirmed - #' + m.referenceNumber + ' | Annas Stays'
+        : 'Reservation Request - #' + m.referenceNumber + ' | Annas Stays';
+
+      const emailHtml = isInstant
+        ? '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Confirmed</h2><p>Dear ' + m.guestFirstName + ',</p><p>Your payment has been received and your stay at <strong>' + m.apartmentName + '</strong> is confirmed.</p><p><strong>Reference:</strong> #' + m.referenceNumber + '</p><p><strong>Check-in:</strong> ' + m.checkIn + '</p><p><strong>Check-out:</strong> ' + m.checkOut + '</p><p><strong>Guests:</strong> ' + m.guestCount + '</p><p><strong>Total Paid:</strong> EUR ' + m.totalPrice + '</p><p>We will send your entry codes 24 hours before check-in.</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>'
+        : '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Reservation Request Received</h2><p>Dear ' + m.guestFirstName + ',</p><p>Your request for <strong>' + m.apartmentName + '</strong> has been received. Your card is saved securely - you will only be charged if approved.</p><p><strong>Reference:</strong> #' + m.referenceNumber + '</p><p><strong>Check-in:</strong> ' + m.checkIn + '</p><p><strong>Check-out:</strong> ' + m.checkOut + '</p><p><strong>Total if Approved:</strong> EUR ' + m.totalPrice + '</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>';
+
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + resendKey,
+        },
+        body: JSON.stringify({
+          from: 'Anna from Helsinki <onboarding@resend.dev>',
+          to: [m.guestEmail],
+          subject: subject,
+          html: emailHtml,
+        }),
+      });
+      console.log('Email sent to ' + m.guestEmail);
+    } catch (emailErr) {
+      console.error('Email failed:', emailErr);
+    }
+  }
+
+  try {
+    const ntfyTitle = isInstant ? 'New Confirmed Booking' : 'New Booking Request';
+    const ntfyBody = isInstant
+      ? 'Booking: ' + m.guestFirstName + ' ' + m.guestLastName + ' | ' + m.apartmentName + ' | ' + m.checkIn + ' to ' + m.checkOut + ' | EUR ' + m.totalPrice
+      : 'Request: ' + m.guestFirstName + ' ' + m.guestLastName + ' wants ' + m.apartmentName + ' | ' + m.checkIn + ' to ' + m.checkOut;
+
+    await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+      method: 'POST',
+      body: ntfyBody,
+      headers: {
+        'Title': ntfyTitle,
+        'Priority': 'high',
+        'Content-Type': 'text/plain',
+      },
+    });
+    console.log('ntfy sent');
+  } catch (ntfyErr) {
+    console.error('ntfy failed:', ntfyErr);
+  }
+
+  return res.status(200).json({ received: true });
+}
