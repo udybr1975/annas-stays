@@ -12,7 +12,7 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         
         // Gemini 1.5 was retired. We are switching to the stable 2.5 Flash model.
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17-lite-preview-06-17:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
