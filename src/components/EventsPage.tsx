@@ -8,11 +8,11 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        const apiKey = "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0";
         
         // Gemini 1.5 was retired. We are switching to the stable 2.5 Flash model.
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
