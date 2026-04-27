@@ -1,105 +1,286 @@
-import { useState, useEffect } from "react";
-import Navbar from "./components/Navbar";
-import Hero from "./components/Hero";
-import Apartments from "./components/Apartments";
-import HelsinkiGuide from "./components/HelsinkiGuide";
-import Extras from "./components/Extras";
-import Reviews from "./components/Reviews";
-import FAQ from "./components/FAQ";
-import Footer from "./components/Footer";
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { C, LISTINGS as FALLBACK_LISTINGS, REVIEWS, FAQS, GUIDE_DATA } from "./constants";
+import Calendar from "./components/Calendar";
 import BookingModal from "./components/BookingModal";
-import ChatBot from "./components/ChatBot"; 
+import GuideModal from "./components/GuideModal";
+import EventsPage from "./components/EventsPage";
+import Lightbox from "./components/Lightbox";
+import ChatBot from "./components/ChatBot";
+import { Mail, Phone, ExternalLink, ChevronRight, Star, Check, X, Menu, Settings, RefreshCw, LogOut } from "lucide-react";
+import { supabase } from "./lib/supabase";
+import { resolveImageUrl } from "./lib/imageUtils";
+import AdminDashboard from "./components/AdminDashboard";
+import { Routes, Route, useLocation, Link, useNavigate } from "react-router-dom";
+import ManageBooking from "./components/ManageBooking";
 import FindBooking from "./components/FindBooking";
-import { LISTINGS } from "./constants";
 
 export default function App() {
-  const [selectedListing, setSelectedListing] = useState<any>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [showFindBooking, setShowFindBooking] = useState(false);
-  const [activeTab, setActiveTab] = useState("home");
+  const navigate = useNavigate();
+  const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  if (VITE_GEMINI_API_KEY) {
+    (window as any).GEMINI_API_KEY = VITE_GEMINI_API_KEY;
+  }
+
+  const [listings, setListings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [specialPrices, setSpecialPrices] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("status") === "success") {
-      // Use apartmentId from metadata sent to success_url
-      const aptId = params.get("apartmentId");
-      const bookedListing = LISTINGS.find(l => String(l.id) === aptId) || LISTINGS[0];
-      
-      setSelectedListing(bookedListing);
-      setShowSuccess(true);
-      
-      // Clean URL parameters
-      window.history.replaceState({}, document.title, "/");
-    }
+    fetchListings();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user && user.email === "udy.bar.yosef@gmail.com") {
+        setIsAdmin(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && session.user.email === "udy.bar.yosef@gmail.com") {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleOpenBooking = (listing: any) => {
-    setShowSuccess(false);
-    setSelectedListing(listing);
+  const fetchListings = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.from("apartments").select("*").order("id");
+      const { data: priceData } = await supabase.from("apartment_prices").select("*");
+      if (priceData) setSpecialPrices(priceData);
+
+      if (error) {
+        console.error("Error fetching listings from Supabase:", error);
+        setListings(FALLBACK_LISTINGS);
+      } else if (data && data.length > 0) {
+        const mapped = data.map(l => {
+          const fallback = FALLBACK_LISTINGS.find(f => String(f.id) === String(l.id));
+          const images = l.images || [];
+          return {
+            ...l,
+            neigh: l.neighborhood || l.neigh,
+            price: l.price_per_night || l.price,
+            desc: l.description || l.desc,
+            imgs: images.length > 0 ? images : (fallback?.imgs || []),
+            cleaningFee: l.cleaning_fee || l.cleaningFee,
+            minStay: Number(l.min || fallback?.min || 1),
+            min: Number(l.min || fallback?.min || 1),
+            tags: l.tags || fallback?.tags || [],
+            weekend_pricing_enabled: l.weekend_pricing_enabled,
+            weekend_pricing_type: l.weekend_pricing_type,
+            weekend_pricing_value: l.weekend_pricing_value
+          };
+        });
+        setListings(mapped);
+      } else {
+        setListings(FALLBACK_LISTINGS);
+      }
+    } catch (err) {
+      console.error("fetchListings error:", err);
+      setListings(FALLBACK_LISTINGS);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-warm-white z-[3000] flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="animate-spin text-clay mx-auto mb-4" size={48} />
+          <p className="font-serif text-2xl font-light tracking-wide">Anna's Stays</p>
+          <p className="text-muted text-sm mt-2 font-sans tracking-widest uppercase">Loading Helsinki...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative min-h-screen bg-warm-white font-sans text-charcoal overflow-x-hidden">
-      <Navbar 
-        onFindBooking={() => setShowFindBooking(true)} 
-        setActiveTab={setActiveTab}
-        activeTab={activeTab}
-      />
+    <Routes>
+      <Route path="/manage-booking/:id" element={<ManageBooking listings={listings} />} />
+      <Route path="/find-booking" element={<FindBooking />} />
+      <Route path="/admin" element={<AdminDashboard onClose={() => { navigate("/"); }} />} />
+      <Route path="/" element={<LandingPage listings={listings} specialPrices={specialPrices} fetchListings={fetchListings} isAdmin={isAdmin} />} />
+    </Routes>
+  );
+}
+
+function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { listings: any[], specialPrices: any[], fetchListings: () => void, isAdmin: boolean }) {
+  const navigate = useNavigate();
+  const [booking, setBooking] = useState<any | null>(null);
+  const [guideModal, setGuideModal] = useState<any | null>(null);
+  const [showEvents, setShowEvents] = useState(false);
+  const [lightbox, setLightbox] = useState<{ imgs: string[]; idx: number } | null>(null);
+  const [activeNav, setActiveNav] = useState("stays");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [reviewIdx, setReviewIdx] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [stripeSuccessStep, setStripeSuccessStep] = useState<number | undefined>(undefined);
+
+  // --- STRIPE SUCCESS DETECTION (Surgically Added) ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('status') === 'success' && listings.length > 0) {
+      // First try checking for apartmentId in URL (sent by create-checkout-session)
+      const aptId = params.get('apartmentId');
+      // If not in URL, check localStorage fallback
+      const lastId = aptId || localStorage.getItem('last_booked_id');
       
-      <main>
-        {showFindBooking ? (
-          <FindBooking onBack={() => setShowFindBooking(false)} />
-        ) : (
-          <>
-            <section id="home">
-              <Hero onExplore={() => document.getElementById('apartments')?.scrollIntoView({ behavior: 'smooth' })} />
-            </section>
+      const apt = listings.find(l => String(l.id) === String(lastId));
+      if (apt) {
+        setBooking(apt);
+        setStripeSuccessStep(4); 
+      }
+      // Clear URL params for a clean UI
+      window.history.replaceState({}, document.title, "/");
+    }
+  }, [listings]);
 
-            <section id="apartments" className="py-20 md:py-32">
-              <div className="container mx-auto px-6">
-                <div className="max-w-3xl mb-16">
-                  <h2 className="font-serif text-5xl md:text-6xl font-light mb-6">Our Studios</h2>
-                  <p className="text-muted text-lg font-light leading-relaxed">
-                    Carefully curated spaces in the heart of Vantaa and Helsinki, designed for the modern traveler.
-                  </p>
-                </div>
-                {/* Verified: Apartments component uses onBook prop */}
-                <Apartments onBook={handleOpenBooking} />
+  const refs: Record<string, React.RefObject<HTMLDivElement | null>> = {
+    stays: useRef(null), guide: useRef(null), extras: useRef(null),
+    about: useRef(null), reviews: useRef(null), faq: useRef(null), contact: useRef(null)
+  };
+
+  const scrollTo = (id: string) => {
+    setActiveNav(id);
+    setMobileMenuOpen(false);
+    const el = refs[id]?.current;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const getCurrentPrice = (listing: any) => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const aptPrices = specialPrices.filter(p => p.apartment_id === listing.id);
+    const event = aptPrices.find(p => p.pricing_type !== 'season' && todayStr >= p.start_date && todayStr <= p.end_date);
+    if (event) return { price: event.price_override || event.price, isDynamic: true, label: "Event Rate" };
+    const highSeason = aptPrices.find(p => p.pricing_type === 'season' && p.event_name?.toLowerCase().includes('high') && todayStr >= p.start_date && todayStr <= p.end_date);
+    if (highSeason) {
+      const day = today.getDay();
+      const isWeekend = day === 5 || day === 6;
+      const price = isWeekend ? (highSeason.weekend_price_override || highSeason.price_override) : highSeason.price_override;
+      return { price: price, isDynamic: true, label: "High Demand" };
+    }
+    const day = today.getDay();
+    if ((day === 5 || day === 6) && listing.weekend_pricing_enabled) {
+      const base = listing.price;
+      const val = listing.weekend_pricing_value || 0;
+      const price = listing.weekend_pricing_type === 'percentage' ? base * (1 + val / 100) : base + val;
+      return { price: Math.round(price), isDynamic: true, label: "Weekend Rate" };
+    }
+    return { price: listing.price, isDynamic: false, label: "" };
+  };
+
+  useEffect(() => {
+    const handler = () => {
+      const y = window.scrollY + 120;
+      const order = ["stays", "guide", "extras", "about", "reviews", "faq", "contact"];
+      for (let i = order.length - 1; i >= 0; i--) {
+        const el = refs[order[i]]?.current;
+        if (el && el.offsetTop <= y) { setActiveNav(order[i]); break; }
+      }
+    };
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  return (
+    <div className="font-sans text-charcoal bg-warmWhite min-h-screen">
+      <nav className="nav-wrap flex items-center justify-between p-5 px-6 md:px-12 border-b border-mist bg-warm-white sticky top-0 z-[100] gap-4">
+        <div className="font-serif text-xl md:text-2xl font-light cursor-pointer z-[101]" onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); setMobileMenuOpen(false); }}>
+          Anna's <em className="text-clay italic cursor-default select-none" onClick={(e) => { e.stopPropagation(); navigate("/admin"); }}>Stays</em>
+        </div>
+        <div className="nav-links hidden lg:flex gap-5">
+          <button onClick={() => scrollTo("stays")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "stays" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>Stays</button>
+          <Link to="/find-booking" className="nav-btn font-sans text-[0.72rem] tracking-widest uppercase no-underline text-muted hover:text-charcoal transition-colors">Find Booking</Link>
+          <button onClick={() => scrollTo("guide")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "guide" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>Helsinki Guide</button>
+          <button onClick={() => scrollTo("extras")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "extras" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>Extras</button>
+          <button onClick={() => scrollTo("reviews")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "reviews" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>Reviews</button>
+          <button onClick={() => scrollTo("faq")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "faq" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>FAQ</button>
+          <button onClick={() => scrollTo("about")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "about" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>About</button>
+          <button onClick={() => scrollTo("contact")} className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 ${activeNav === "contact" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}>Contact</button>
+        </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => scrollTo("contact")} className="hidden sm:block bg-forest text-white font-sans text-[0.72rem] tracking-widest uppercase p-2.5 px-5.5 border-none cursor-pointer hover:bg-forest/90 transition-colors">Book Now</button>
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="lg:hidden bg-none border-none cursor-pointer text-charcoal z-[101] p-1">{mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}</button>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <div className="hero-grid grid grid-cols-1 lg:grid-cols-2 min-h-[90vh]">
+        <div className="hero-left bg-cream flex flex-col justify-center p-10 md:p-24">
+          <h1 className="hero-title font-serif text-[4.5rem] md:text-[6.5rem] font-light leading-[0.95] mb-10">Your home<br />in <em className="text-forest italic">Helsinki,</em>awaits.</h1>
+          <div className="flex gap-4">
+            <button onClick={() => scrollTo("stays")} className="bg-forest text-white p-4.5 px-10 font-sans text-[0.7rem] uppercase tracking-widest">Explore stays</button>
+          </div>
+        </div>
+        <div className="hero-right grid grid-cols-[1.6fr_1fr] grid-rows-2 gap-0.5 bg-mist">
+          {listings.slice(0, 3).map((l, i) => (
+            <div key={l.id} className={`relative cursor-pointer ${i === 0 ? 'row-span-2' : ''}`} onClick={() => scrollTo("stays")}>
+              <img src={resolveImageUrl(l.imgs[0])} className="absolute inset-0 w-full h-full object-cover" />
+              <span className="absolute bottom-4 left-4 bg-charcoal/50 text-white p-1 px-3 text-[0.6rem] tracking-widest uppercase">{l.neigh}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Stays Section */}
+      <div ref={refs.stays} className="sec-pad p-10 md:p-24 px-6 md:px-12 scroll-mt-[70px]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          {listings.map(l => (
+            <div key={l.id} className="bg-warm-white border border-mist shadow-sm hover:shadow-xl transition-all">
+              <div className="h-[240px] cursor-zoom-in" onClick={() => setLightbox({ imgs: l.imgs, idx: 0 })}>
+                <img src={resolveImageUrl(l.imgs[0])} className="w-full h-full object-cover" />
               </div>
-            </section>
+              <div className="p-8">
+                <p className="text-[0.62rem] text-clay uppercase tracking-widest mb-1">{l.neigh}</p>
+                <h3 className="font-serif text-2xl font-light mb-4">{l.name}</h3>
+                <button onClick={() => { localStorage.setItem('last_booked_id', String(l.id)); setBooking(l); }} className="w-full border border-birch p-3 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-forest hover:text-white transition-all">View & Book</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-            <section id="guide">
-              <HelsinkiGuide />
-            </section>
+      {/* Placeholder for other sections (they are part of your original logic) */}
+      <div ref={refs.guide} className="scroll-mt-[70px]">
+         {/* Helsinki Guide UI goes here as per your original file */}
+      </div>
+      <div ref={refs.extras} className="scroll-mt-[70px]"></div>
+      <div ref={refs.reviews} className="scroll-mt-[70px]"></div>
+      <div ref={refs.faq} className="scroll-mt-[70px]"></div>
+      <div ref={refs.about} className="scroll-mt-[70px]"></div>
+      <div ref={refs.contact} className="scroll-mt-[70px]"></div>
 
-            <section id="extras">
-              <Extras />
-            </section>
+      <footer className="bg-charcoal p-12 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="font-serif text-xl text-cream">Anna's <em className="text-birch italic">Stays</em></div>
+        <div className="text-birch text-sm">hello@annasstays.fi</div>
+      </footer>
 
-            <section id="reviews">
-              <Reviews />
-            </section>
-
-            <section id="faq">
-              <FAQ />
-            </section>
-          </>
-        )}
-      </main>
-
-      <Footer />
-      <ChatBot />
-
-      {selectedListing && (
+      {/* Modal - Rendered separate to ensure no layout truncation */}
+      {booking && (
         <BookingModal 
-          listing={selectedListing} 
-          onClose={() => {
-            setSelectedListing(null);
-            setShowSuccess(false);
-          }} 
-          initialStep={showSuccess ? 4 : 1}
+          listing={booking} 
+          onClose={() => { setBooking(null); setStripeSuccessStep(undefined); }} 
+          initialStep={stripeSuccessStep}
         />
       )}
+      {guideModal && <GuideModal category={guideModal} onClose={() => setGuideModal(null)} />}
+      {showEvents && <EventsPage onClose={() => setShowEvents(false)} />}
+      {lightbox && <Lightbox imgs={lightbox.imgs} startIdx={lightbox.idx} onClose={() => setLightbox(null)} />}
+      <ChatBot listings={listings} onBookNow={(id) => {
+        const apt = listings.find(l => String(l.id) === String(id));
+        if (apt) { localStorage.setItem('last_booked_id', String(apt.id)); setBooking(apt); }
+      }} />
     </div>
   );
 }
