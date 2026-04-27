@@ -7,7 +7,6 @@ import { supabase } from "../lib/supabase";
 import { resolveImageUrl } from "../lib/imageUtils";
 import { Info, RefreshCw } from "lucide-react";
 
-// Import Swiper styles
 import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
@@ -27,8 +26,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   const [specialPrices, setSpecialPrices] = useState<any[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [redirecting, setRedirecting] = useState(false);
-  // Only confirmed bookings block the calendar
+  const [submitting, setSubmitting] = useState(false);
   const [bookedDates, setBookedDates] = useState<string[]>([]);
   const [guestCount, setGuestCount] = useState<number>(0);
   const [isInstantBook, setIsInstantBook] = useState<boolean>(true);
@@ -51,21 +49,26 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   };
 
   const fetchBookedDates = async () => {
-    // IMPORTANT: Only confirmed bookings block the calendar.
-    // 'awaiting_payment', 'pending', 'cancelled', 'declined' do NOT block dates.
+    // Block confirmed AND awaiting_payment dates
     const { data, error } = await supabase
       .from("bookings")
-      .select("check_in, check_out")
+      .select("check_in, check_out, status, payment_link_expires_at")
       .eq("apartment_id", listing.id)
-      .eq("status", "confirmed");
+      .in("status", ["confirmed", "awaiting_payment"]);
 
     if (error) {
       console.error("Error fetching booked dates:", error);
       return;
     }
 
+    const now = new Date();
     const dates: string[] = [];
     (data || []).forEach((booking) => {
+      // For awaiting_payment: only block if payment link has not expired
+      if (booking.status === 'awaiting_payment' && booking.payment_link_expires_at) {
+        const expires = new Date(booking.payment_link_expires_at);
+        if (expires <= now) return; // expired — do not block
+      }
       let curr = new Date(booking.check_in);
       const last = new Date(booking.check_out);
       while (curr < last) {
@@ -82,11 +85,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       .from("apartment_prices")
       .select("*")
       .eq("apartment_id", listing.id);
-    if (error) {
-      console.error("Error fetching special prices:", error);
-    } else {
-      setSpecialPrices(data || []);
-    }
+    if (!error) setSpecialPrices(data || []);
     setPriceLoading(false);
   };
 
@@ -94,7 +93,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     const date = new Date(dateStr);
     date.setHours(0, 0, 0, 0);
 
-    // Priority 1: Special Event
     const special = specialPrices.find((p) => {
       if (p.pricing_type === "season") return false;
       const start = new Date(p.start_date || p.date);
@@ -105,7 +103,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     });
     if (special) return { price: special.price_override || special.price, type: "Event: " + (special.event_name || "Special Pricing") };
 
-    // Priority 2: Seasonal
     const season = specialPrices.find((p) => {
       if (p.pricing_type !== "season") return false;
       const start = new Date(p.start_date);
@@ -123,7 +120,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       };
     }
 
-    // Priority 3: Weekend pricing
     const day = date.getDay();
     const isWeekend = day === 5 || day === 6;
     if (isWeekend && listing.weekend_pricing_enabled) {
@@ -133,7 +129,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       return { price: Math.round(price), type: "Weekend Rate" };
     }
 
-    // Priority 4: Base price
     return { price: listing.price, type: "Base Rate" };
   };
 
@@ -162,25 +157,19 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
   const minStay = listing.minStay || listing.min || 1;
   const isValidStay = nights >= minStay;
 
-  const handleGoToStripe = async () => {
+  // ── Instant book: redirect to Stripe as before ────────────────────────────
+  const handleInstantBook = async () => {
     if (!form.fn.trim() || !form.em.trim()) {
       alert("Please fill in your first name and email address.");
       return;
     }
 
-    const aptId = listing?.id;
-    if (!aptId) {
-      alert("Error: Apartment information is missing. Please close and try again.");
-      return;
-    }
-
-    // Final overlap check against confirmed bookings only
     if (range.start && range.end) {
       let curr = new Date(range.start);
       const last = new Date(range.end);
       while (curr < last) {
         if (bookedDates.includes(curr.toISOString().split("T")[0])) {
-          alert("Your selected dates include dates that are already confirmed by another guest. Please choose a different range.");
+          alert("Your selected dates include dates that are already booked. Please choose a different range.");
           setRange({ start: null, end: null });
           setStep(1);
           return;
@@ -189,16 +178,13 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       }
     }
 
-    setRedirecting(true);
-
+    setSubmitting(true);
     try {
-      // Generate reference number
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let randomPart = "";
       for (let i = 0; i < 8; i++) randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
       const finalRef = `RES-${randomPart}`;
 
-      // Redirect to Stripe — booking is saved to DB ONLY after Stripe webhook confirms payment
       const stripeResponse = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -214,23 +200,20 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             transfer: transfer,
             message: form.message.trim(),
           },
-          listing: {
-            id: listing.id,
-            name: listing.name,
-          },
+          listing: { id: listing.id, name: listing.name },
           guest: {
             email: form.em.trim().toLowerCase(),
             firstName: form.fn.trim(),
             lastName: form.ln.trim(),
           },
-          isInstantBook: isInstantBook,
+          isInstantBook: true,
         }),
       });
 
       if (!stripeResponse.ok) {
         const errData = await stripeResponse.json().catch(() => ({}));
         alert("Payment setup failed: " + (errData.error || "Please try again."));
-        setRedirecting(false);
+        setSubmitting(false);
         return;
       }
 
@@ -239,12 +222,117 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
         window.location.href = url;
       } else {
         alert("Could not get payment URL. Please try again.");
-        setRedirecting(false);
+        setSubmitting(false);
       }
     } catch (err: any) {
-      console.error("Checkout error:", err);
       alert("An unexpected error occurred: " + (err.message || "Unknown error"));
-      setRedirecting(false);
+      setSubmitting(false);
+    }
+  };
+
+  // ── Pending: save directly to Supabase, no Stripe ─────────────────────────
+  const handlePendingRequest = async () => {
+    if (!form.fn.trim() || !form.em.trim()) {
+      alert("Please fill in your first name and email address.");
+      return;
+    }
+
+    if (range.start && range.end) {
+      let curr = new Date(range.start);
+      const last = new Date(range.end);
+      while (curr < last) {
+        if (bookedDates.includes(curr.toISOString().split("T")[0])) {
+          alert("Your selected dates include dates that are already booked. Please choose a different range.");
+          setRange({ start: null, end: null });
+          setStep(1);
+          return;
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let randomPart = "";
+      for (let i = 0; i < 8; i++) randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+      const finalRef = `RES-${randomPart}`;
+
+      // 1. Upsert guest
+      const { data: guestData, error: guestError } = await supabase
+        .from("guests")
+        .upsert({
+          email: form.em.trim().toLowerCase(),
+          first_name: form.fn.trim(),
+          last_name: form.ln.trim(),
+        }, { onConflict: "email", ignoreDuplicates: false })
+        .select("id")
+        .single();
+
+      if (guestError || !guestData?.id) {
+        alert("Could not save your details. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      // 2. Insert booking as pending — no Stripe involved
+      const { error: bookingError } = await supabase
+        .from("bookings")
+        .insert({
+          apartment_id: listing.id,
+          guest_id: guestData.id,
+          check_in: range.start,
+          check_out: range.end,
+          total_price: total,
+          guest_count: guestCount,
+          status: "pending",
+          reference_number: finalRef,
+          admin_needs_attention: true,
+          notes: form.message.trim() || null,
+        });
+
+      if (bookingError) {
+        alert("Could not submit your request. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      // 3. Send ntfy to Anna
+      try {
+        await fetch("https://ntfy.sh/annas-stays-helsinki-99", {
+          method: "POST",
+          body: "New request: " + form.fn.trim() + " " + form.ln.trim() + " wants " + listing.name + " | " + range.start + " to " + range.end + " | EUR " + total,
+          headers: {
+            "Title": "New Booking Request",
+            "Priority": "high",
+            "Content-Type": "text/plain",
+          },
+        });
+      } catch (ntfyErr) {
+        console.error("ntfy failed:", ntfyErr);
+      }
+
+      // 4. Send acknowledgement email to guest
+      try {
+        await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: form.em.trim().toLowerCase(),
+            subject: "Reservation Request Received — #" + finalRef + " | Anna's Stays",
+            html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Request Received</h2><p>Dear ' + form.fn.trim() + ',</p><p>Thank you for your request for <strong>' + listing.name + '</strong>. We will review it and get back to you shortly. If approved, you will receive a secure payment link by email.</p><p><strong>Reference:</strong> #' + finalRef + '</p><p><strong>Check-in:</strong> ' + range.start + '</p><p><strong>Check-out:</strong> ' + range.end + '</p><p><strong>Total if approved:</strong> EUR ' + total + '</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>',
+          }),
+        });
+      } catch (emailErr) {
+        console.error("Guest acknowledgement email failed:", emailErr);
+      }
+
+      // 5. Redirect to success page
+      window.location.href = `/booking-success?ref=${finalRef}&pending=true`;
+
+    } catch (err: any) {
+      alert("An unexpected error occurred: " + (err.message || "Unknown error"));
+      setSubmitting(false);
     }
   };
 
@@ -261,14 +349,11 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     </div>
   );
 
-  // Progress steps — 3 steps total: 1=Details, 2=Extras, 3=Payment
   const STEPS = ["Details", "Extras", "Your Info"];
 
   return (
     <div className="fixed inset-0 bg-charcoal/60 z-[2000] flex items-center justify-center p-4">
-      <div
-        className={`bg-warm-white w-full ${step === 1 ? "max-w-[1000px]" : "max-w-[520px]"} max-h-[92vh] overflow-y-auto p-6 md:p-10 relative font-sans transition-all duration-300`}
-      >
+      <div className={`bg-warm-white w-full ${step === 1 ? "max-w-[1000px]" : "max-w-[520px]"} max-h-[92vh] overflow-y-auto p-6 md:p-10 relative font-sans transition-all duration-300`}>
         <button onClick={onClose} className="absolute top-4 right-5 bg-none border-none text-xl cursor-pointer text-muted z-10 hover:text-charcoal transition-colors">
           ✕
         </button>
@@ -283,10 +368,9 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
           ))}
         </div>
 
-        {/* ─── STEP 1: Dates & apartment details ─────────────────────────────── */}
+        {/* ─── STEP 1 ─── */}
         {step === 1 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {/* Left: Apartment images + description */}
             <div className="flex flex-col gap-6">
               <div className="w-full h-[300px] md:h-[450px] overflow-hidden bg-mist shadow-inner">
                 <Swiper
@@ -299,12 +383,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 >
                   {(listing.imgs || []).map((img: string, idx: number) => (
                     <SwiperSlide key={idx}>
-                      <img
-                        src={resolveImageUrl(img)}
-                        alt={`${listing.name} ${idx}`}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <img src={resolveImageUrl(img)} alt={`${listing.name} ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </SwiperSlide>
                   ))}
                 </Swiper>
@@ -315,17 +394,13 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 <p className="text-sm text-muted leading-relaxed mb-6 font-light">{listing.desc}</p>
                 <div className="flex gap-2 flex-wrap">
                   {listing.tags?.map((t: string) => (
-                    <span key={t} className="text-[0.6rem] tracking-widest uppercase border border-mist text-muted p-1.5 px-3 font-sans">
-                      {t}
-                    </span>
+                    <span key={t} className="text-[0.6rem] tracking-widest uppercase border border-mist text-muted p-1.5 px-3 font-sans">{t}</span>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Right: Guest count + calendar + price summary */}
             <div className="bg-cream/30 p-6 border border-mist">
-              {/* Guest count */}
               <div className="mb-8">
                 <h3 className="font-serif text-xl font-light mb-4">Number of Guests</h3>
                 <div className="flex gap-2">
@@ -333,9 +408,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                     <button
                       key={num}
                       onClick={() => setGuestCount(num)}
-                      className={`flex-1 p-3 border font-sans text-[0.7rem] tracking-widest uppercase transition-all ${
-                        guestCount === num ? "bg-charcoal text-white border-charcoal" : "bg-warm-white text-muted border-mist hover:border-clay"
-                      }`}
+                      className={`flex-1 p-3 border font-sans text-[0.7rem] tracking-widest uppercase transition-all ${guestCount === num ? "bg-charcoal text-white border-charcoal" : "bg-warm-white text-muted border-mist hover:border-clay"}`}
                     >
                       {num} {num === 1 ? "Guest" : "Guests"}
                     </button>
@@ -343,7 +416,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 </div>
               </div>
 
-              {/* Calendar */}
               <h3 className="font-serif text-xl font-light mb-6">Select your dates</h3>
               <Calendar
                 listingId={String(listing.id)}
@@ -353,7 +425,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 refreshTrigger={refreshTrigger}
               />
 
-              {/* Price breakdown */}
               <div className="mt-8 pt-6 border-t border-mist">
                 {nights > 0 ? (
                   <div className="flex flex-col gap-3 mb-6">
@@ -379,7 +450,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                       </div>
                       {breakdown.cleaningFee > 0 && (
                         <div className="flex justify-between items-baseline mb-2 pb-2 border-b border-mist/40">
-                          <span className="text-xs tracking-widest uppercase text-muted font-sans font-medium">Cleaning fee (one-time)</span>
+                          <span className="text-xs tracking-widest uppercase text-muted font-sans font-medium">Cleaning fee</span>
                           <span className="font-serif text-lg text-clay">€{breakdown.cleaningFee}</span>
                         </div>
                       )}
@@ -409,26 +480,16 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 <button
                   disabled={(nights > 0 && !isValidStay) || guestCount === 0}
                   onClick={() => nights > 0 && isValidStay && guestCount > 0 && setStep(2)}
-                  className={`w-full p-4 border-none font-sans text-xs tracking-widest uppercase transition-all ${
-                    nights > 0 && isValidStay && guestCount > 0
-                      ? "cursor-pointer bg-forest text-white hover:bg-forest/90"
-                      : "cursor-default bg-mist text-muted opacity-60"
-                  }`}
+                  className={`w-full p-4 border-none font-sans text-xs tracking-widest uppercase transition-all ${nights > 0 && isValidStay && guestCount > 0 ? "cursor-pointer bg-forest text-white hover:bg-forest/90" : "cursor-default bg-mist text-muted opacity-60"}`}
                 >
-                  {guestCount === 0
-                    ? "Select number of guests"
-                    : nights > 0
-                    ? isValidStay
-                      ? "Continue to Extras →"
-                      : `Min ${minStay} ${minStay === 1 ? "night" : "nights"} required`
-                    : "Select dates to continue"}
+                  {guestCount === 0 ? "Select number of guests" : nights > 0 ? isValidStay ? "Continue to Extras →" : `Min ${minStay} ${minStay === 1 ? "night" : "nights"} required` : "Select dates to continue"}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 2: Extras ────────────────────────────────────────────────── */}
+        {/* ─── STEP 2 ─── */}
         {step === 2 && (
           <div className="max-w-[440px] mx-auto">
             <h2 className="font-serif text-2xl font-light mb-6 text-center">Enhance your stay</h2>
@@ -449,7 +510,6 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
               </div>
             ))}
 
-            {/* Order summary */}
             <div className="p-4 px-5 bg-cream my-2 mb-5 text-[0.82rem] text-muted leading-loose">
               <div className="flex justify-between"><span>Accommodation ({nights} nights)</span><span>€{breakdown.subtotal}</span></div>
               {breakdown.cleaningFee > 0 && <div className="flex justify-between"><span>Cleaning fee</span><span>€{breakdown.cleaningFee}</span></div>}
@@ -461,17 +521,13 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setStep(1)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">
-                Back
-              </button>
-              <button onClick={() => setStep(3)} className="flex-[2] p-3.5 bg-forest text-white border-none font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors">
-                Continue →
-              </button>
+              <button onClick={() => setStep(1)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">Back</button>
+              <button onClick={() => setStep(3)} className="flex-[2] p-3.5 bg-forest text-white border-none font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors">Continue →</button>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 3: Guest info + Stripe redirect ──────────────────────────── */}
+        {/* ─── STEP 3 ─── */}
         {step === 3 && (
           <div className="max-w-[440px] mx-auto">
             <h2 className="font-serif text-2xl font-light mb-6 text-center">Your details</h2>
@@ -482,33 +538,29 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             </div>
             {fi("Email address", "em", "email", "your@email.com")}
 
-            {/* For pending (approval required) apartments, show a message field */}
-            {!isInstantBook && (
-              <div className="mt-3 flex flex-col gap-1">
-                <label className="text-[0.62rem] tracking-widest uppercase text-muted font-sans">Message to Host <span className="normal-case text-muted/70">(optional)</span></label>
-                <textarea
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  placeholder="Tell us a bit about your trip..."
-                  className="w-full p-3.5 bg-cream border border-mist font-sans text-sm focus:outline-none focus:border-clay min-h-[90px] resize-none"
-                />
-              </div>
-            )}
+            <div className="mt-3 flex flex-col gap-1">
+              <label className="text-[0.62rem] tracking-widest uppercase text-muted font-sans">
+                {isInstantBook ? "Special requests" : "Message to Host"}
+                <span className="normal-case text-muted/70 ml-1">(optional)</span>
+              </label>
+              <textarea
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                placeholder={isInstantBook ? "Any special requests or questions..." : "Tell us a bit about your trip..."}
+                className="w-full p-3.5 bg-cream border border-mist font-sans text-sm focus:outline-none focus:border-clay min-h-[90px] resize-none"
+              />
+            </div>
 
             {/* Booking type info */}
             <div className="mt-4 mb-5 p-3.5 bg-cream border border-mist text-[0.75rem] text-muted leading-relaxed">
-              {isInstantBook ? (
-                <span>🔒 You will be redirected to Stripe to complete your payment securely. Your stay is confirmed once payment is received.</span>
-              ) : (
-                <span>📋 This apartment requires host approval. Your card details will be saved securely but <strong>you will only be charged if your request is approved.</strong></span>
-              )}
+              {isInstantBook
+                ? "You will be redirected to Stripe to complete your payment securely. Your stay is confirmed once payment is received."
+                : "Your request will be sent to Anna for review. No payment is required now. If approved, you will receive a secure payment link by email within a few hours."}
             </div>
 
             {/* Order summary */}
             <div className="p-4 bg-cream/60 border border-mist mb-5 text-[0.82rem] text-muted leading-loose">
-              <div className="flex justify-between font-medium text-charcoal mb-1">
-                <span>{listing.name}</span>
-              </div>
+              <div className="flex justify-between font-medium text-charcoal mb-1"><span>{listing.name}</span></div>
               <div className="flex justify-between"><span>{range.start} → {range.end}</span><span>{nights} nights</span></div>
               <div className="flex justify-between"><span>Guests</span><span>{guestCount}</span></div>
               {breakdown.cleaningFee > 0 && <div className="flex justify-between"><span>Cleaning fee</span><span>€{breakdown.cleaningFee}</span></div>}
@@ -521,21 +573,17 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setStep(2)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">
-                Back
-              </button>
+              <button onClick={() => setStep(2)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">Back</button>
               <button
-                onClick={handleGoToStripe}
-                disabled={redirecting}
+                onClick={isInstantBook ? handleInstantBook : handlePendingRequest}
+                disabled={submitting}
                 className="flex-[2] p-3.5 bg-forest text-white border-none font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer disabled:opacity-60 hover:bg-forest/90 transition-colors flex items-center justify-center gap-2"
               >
-                {redirecting ? (
-                  <><RefreshCw size={14} className="animate-spin" /> Redirecting...</>
-                ) : isInstantBook ? (
-                  `Pay €${total} via Stripe →`
-                ) : (
-                  "Save card & send request →"
-                )}
+                {submitting
+                  ? <><RefreshCw size={14} className="animate-spin" /> Submitting...</>
+                  : isInstantBook
+                  ? `Pay €${total} via Stripe →`
+                  : "Send Request →"}
               </button>
             </div>
           </div>
