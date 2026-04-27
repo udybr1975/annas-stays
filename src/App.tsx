@@ -125,10 +125,9 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
   const [reviewIdx, setReviewIdx] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // --- NEW: Added state for Stripe Success Step ---
+  // --- STRIPE SUCCESS LOGIC ---
   const [stripeSuccessStep, setStripeSuccessStep] = useState<number | undefined>(undefined);
 
-  // --- NEW: Detection for Stripe Success Redirect ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('status') === 'success' && listings.length > 0) {
@@ -212,13 +211,11 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </nav>
 
-      {/* Hero Section */}
+      {/* Hero */}
       <div className="hero-grid grid grid-cols-1 lg:grid-cols-2 min-h-[90vh]">
         <div className="hero-left bg-cream flex flex-col justify-center p-10 md:p-24">
           <h1 className="hero-title font-serif text-[4.5rem] md:text-[6.5rem] font-light leading-[0.95] mb-10">Your home<br />in <em className="text-forest italic">Helsinki,</em>awaits.</h1>
-          <div className="flex gap-4">
-            <button onClick={() => scrollTo("stays")} className="bg-forest text-white p-4.5 px-10 font-sans text-[0.7rem] uppercase tracking-widest">Explore stays</button>
-          </div>
+          <button onClick={() => scrollTo("stays")} className="bg-forest text-white p-4.5 px-10 font-sans text-[0.7rem] uppercase tracking-widest w-fit">Explore stays</button>
         </div>
         <div className="hero-right grid grid-cols-[1.6fr_1fr] grid-rows-2 gap-0.5 bg-mist">
           {listings.slice(0, 3).map((l, i) => (
@@ -232,6 +229,9 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
 
       {/* Stays Section */}
       <div ref={refs.stays} className="sec-pad p-10 md:p-24 px-6 md:px-12 scroll-mt-[70px]">
+        <div className="flex justify-between items-end mb-16">
+          <h2 className="font-serif text-5xl md:text-6xl font-light">Our Studios</h2>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
           {listings.map(l => (
             <div key={l.id} className="bg-warm-white border border-mist shadow-sm hover:shadow-xl transition-all">
@@ -248,16 +248,81 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* Your other original sections (Guide, Extras, etc.) go here implicitly 
-          within your original file structure. If they were below stays, 
-          they will appear as normal. */}
+      {/* HELSINKI GUIDE SECTION (The part I deleted previously) */}
+      <div ref={refs.guide} className="bg-cream py-24 scroll-mt-[70px]">
+        <div className="container mx-auto px-6 md:px-12">
+          <h2 className="font-serif text-5xl font-light mb-12">Helsinki Guide</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Object.keys(GUIDE_DATA).map(cat => (
+              <div key={cat} onClick={() => setGuideModal(cat)} className="bg-white p-8 border border-mist cursor-pointer hover:border-clay transition-colors">
+                <h3 className="font-serif text-xl capitalize">{cat}</h3>
+                <p className="text-muted text-xs mt-2 uppercase tracking-widest">Explore →</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* EXTRAS SECTION */}
+      <div ref={refs.extras} className="py-24 border-y border-mist scroll-mt-[70px]">
+        <div className="container mx-auto px-6 text-center">
+            <h2 className="font-serif text-5xl font-light mb-12">Extras</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
+                <div className="text-left p-10 bg-warm-white border border-mist">
+                    <h3 className="font-serif text-2xl mb-4">Car Rental</h3>
+                    <p className="text-muted text-sm leading-relaxed mb-6">Private car rental ready at your apartment. €55 / day.</p>
+                </div>
+                <div className="text-left p-10 bg-warm-white border border-mist">
+                    <h3 className="font-serif text-2xl mb-4">Airport Transfer</h3>
+                    <p className="text-muted text-sm leading-relaxed mb-6">Hassle-free pickup from Helsinki-Vantaa. €35 flat rate.</p>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      {/* REVIEWS SECTION */}
+      <div ref={refs.reviews} className="py-24 bg-charcoal text-cream scroll-mt-[70px]">
+        <div className="container mx-auto px-6 text-center">
+            <Star className="text-clay mx-auto mb-8" />
+            <p className="font-serif text-3xl md:text-4xl font-light max-w-3xl mx-auto leading-tight italic">
+                "{REVIEWS[reviewIdx].text}"
+            </p>
+            <p className="mt-8 text-clay uppercase tracking-widest text-xs">- {REVIEWS[reviewIdx].author}</p>
+        </div>
+      </div>
+
+      {/* FAQ SECTION */}
+      <div ref={refs.faq} className="py-24 scroll-mt-[70px]">
+        <div className="max-w-3xl mx-auto px-6">
+            <h2 className="font-serif text-5xl font-light mb-12 text-center">FAQ</h2>
+            <div className="space-y-4">
+                {FAQS.map((faq, i) => (
+                    <div key={i} className="border-b border-mist pb-4">
+                        <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full text-left flex justify-between items-center py-4">
+                            <span className="font-serif text-xl">{faq.q}</span>
+                            <span>{openFaq === i ? '−' : '+'}</span>
+                        </button>
+                        {openFaq === i && <p className="text-muted text-sm pb-4">{faq.a}</p>}
+                    </div>
+                ))}
+            </div>
+        </div>
+      </div>
+
+      {/* CONTACT/ABOUT SECTION */}
+      <div ref={refs.contact} className="py-24 border-t border-mist bg-warm-white scroll-mt-[70px]">
+          <div className="container mx-auto px-6 text-center">
+              <h2 className="font-serif text-5xl font-light mb-8 italic">Say Hello</h2>
+              <p className="text-muted mb-12">hello@annasstays.fi</p>
+          </div>
+      </div>
 
       <footer className="bg-charcoal p-12 flex flex-col md:flex-row justify-between items-center gap-6">
         <div className="font-serif text-xl text-cream">Anna's <em className="text-birch italic">Stays</em></div>
-        <div className="text-birch text-sm">hello@annasstays.fi</div>
+        <div className="text-birch text-sm">© 2026 Anna's Stays Helsinki</div>
       </footer>
 
-      {/* MODAL & OVERLAYS - Fixed placement */}
+      {/* MODALS */}
       {booking && (
         <BookingModal 
           listing={booking} 
@@ -268,8 +333,6 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
       {guideModal && <GuideModal category={guideModal} onClose={() => setGuideModal(null)} />}
       {showEvents && <EventsPage onClose={() => setShowEvents(false)} />}
       {lightbox && <Lightbox imgs={lightbox.imgs} startIdx={lightbox.idx} onClose={() => setLightbox(null)} />}
-      
-      {/* Verified Component Name: ChatBot */}
       <ChatBot listings={listings} onBookNow={(id) => {
         const apt = listings.find(l => String(l.id) === String(id));
         if (apt) { localStorage.setItem('last_booked_id', String(apt.id)); setBooking(apt); }
