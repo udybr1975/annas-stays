@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from "react";
 import { GoogleGenAI } from "@google/genai";
 import { LISTINGS } from "../constants";
@@ -357,7 +358,7 @@ export default function ChatBot({
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash-lite-preview-06-17-lite-preview-06-17",
         contents: [
           ...history.map(h => ({
             role: h.role,
