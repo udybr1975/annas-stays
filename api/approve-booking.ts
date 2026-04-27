@@ -110,7 +110,7 @@ export default async function handler(req: any, res: any) {
             'Authorization': 'Bearer ' + resendKey,
           },
           body: JSON.stringify({
-            from: 'Anna from Helsinki <onboarding@resend.dev>',
+            from: "Anna's Stays <info@anna-stays.fi>",
             to: [booking.guests.email],
             subject: 'Booking Confirmed - #' + booking.reference_number + ' | Annas Stays',
             html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Your Stay is Confirmed</h2><p>Dear ' + guestFirstName + ',</p><p>Great news! Your reservation request for <strong>' + aptName + '</strong> has been approved and your card has been charged.</p><p><strong>Reference:</strong> #' + booking.reference_number + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Guests:</strong> ' + booking.guest_count + '</p><p><strong>Total Charged:</strong> EUR ' + booking.total_price + '</p><p>We will send your entry codes 24 hours before check-in.</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>',
