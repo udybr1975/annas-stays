@@ -12,30 +12,37 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         if (!apiKey) throw new Error("API key not configured");
 
-        const ai = new GoogleGenAI({ apiKey });
-        const now = new Date();
-        const monthYear = now.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+        const ai = new GoogleGenAI(apiKey); // Note: Most versions use GoogleGenAI(apiKey) without braces
+        
+        // 1. Define today and 7 days from now
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+        // 2. Format the dateRange variable so the prompt can see it
+        const dateRange = `${today.toLocaleDateString('en-GB', { month: 'long', day: 'numeric' })} to ${nextWeek.toLocaleDateString('en-GB', { month: 'long', day: 'numeric' })}`;
+
+        const response = await ai.getGenerativeModel({ model: "gemini-1.5-flash" }).generateContent({
           contents: [{
             role: "user",
             parts: [{
-  text: `List 5-7 real events happening in Helsinki during the specific window of ${dateRange}, 2026. 
-  Do not include events outside this date range.
-  Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: 
-  { 
-    "week": "${dateRange}", 
-    "categories": [ 
-      { 
-        "name": "Events", 
-        "events": [ 
-          { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } 
-        ] 
-      } 
-    ] 
-  }`
-}]
+              text: `List 5-7 real events happening in Helsinki during the specific window of ${dateRange}, 2026. 
+              Do not include events outside this date range.
+              Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: 
+              { 
+                "week": "${dateRange}", 
+                "categories": [ 
+                  { 
+                    "name": "Events", 
+                    "events": [ 
+                      { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } 
+                    ] 
+                  } 
+                ] 
+              }`
+            }]
+          }]
+        });
           }],
           config: {
             responseMimeType: "application/json"
