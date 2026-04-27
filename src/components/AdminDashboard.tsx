@@ -394,7 +394,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     showToast("Processing with AI...", "info");
     
     try {
-      const ai = new GoogleGenAI({ apiKey: "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0" });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash",
         contents: `I have a list of apartment rules/info. Please split them into a JSON array of objects with 'category', 'content', and 'is_private' (boolean). 
@@ -443,7 +443,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const searchHelsinkiEvents = async () => {
     setSearchingEvents(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0" });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash",
         contents: "Find major events in Helsinki 2026. Prioritize: Lux Helsinki (Jan 6-11), Vappu (Apr 30-May 1), Midsummer (Jun 19-20), Tuska Festival (Jun 26-28), Helsinki Cup (Jul 6-11), Flow Festival (Aug 14-16), Helsinki Design Week (Aug 28-Sep 6), Slush (Nov 18-19). Return a JSON array of objects with 'name', 'start', 'end'.",
