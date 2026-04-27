@@ -17,12 +17,9 @@ export default async function handler(req: any, res: any) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const { bookingId } = req.body;
+  if (!bookingId) return res.status(400).json({ error: 'Missing bookingId' });
 
-  if (!bookingId) {
-    return res.status(400).json({ error: 'Missing bookingId' });
-  }
-
-  // 1. Fetch booking from Supabase
+  // 1. Fetch booking + guest from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select('*, guests(*)')
@@ -37,70 +34,63 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Booking is not in pending state' });
   }
 
-  if (!booking.stripe_setup_intent_id) {
-    return res.status(400).json({ error: 'No saved payment method found for this booking' });
+  const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
+  if (!guest?.email) {
+    return res.status(400).json({ error: 'Guest email not found' });
   }
 
   try {
-    // 2. Retrieve the SetupIntent to get the saved payment method
-    const setupIntent = await stripe.setupIntents.retrieve(booking.stripe_setup_intent_id);
+    // 2. Create a Stripe Checkout Session (payment link) that expires in 24 hours
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24 hours from now
 
-    if (!setupIntent.payment_method) {
-      return res.status(400).json({ error: 'No payment method attached to this setup intent' });
-    }
-
-    const paymentMethodId = typeof setupIntent.payment_method === 'string'
-      ? setupIntent.payment_method
-      : setupIntent.payment_method.id;
-
-    // 3. Create a Stripe Customer and attach the payment method
-    const customer = await stripe.customers.create({
-      email: booking.guests?.email || '',
-      name: `${booking.guests?.first_name || ''} ${booking.guests?.last_name || ''}`.trim(),
-      payment_method: paymentMethodId,
-    });
-
-    // 4. Charge the card
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(booking.total_price * 100),
-      currency: 'eur',
-      customer: customer.id,
-      payment_method: paymentMethodId,
-      confirm: true,
-      description: `Anna's Stays — Booking ${booking.reference_number}`,
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'payment',
+      customer_email: guest.email,
+      line_items: [
+        {
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: `Anna's Stays — Booking #${booking.reference_number}`,
+              description: `${booking.check_in} to ${booking.check_out} · ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''}`,
+            },
+            unit_amount: Math.round(booking.total_price * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      expires_at: expiresAt,
+      success_url: `https://www.anna-stays.fi/booking-success?ref=${booking.reference_number}&paid=true`,
+      cancel_url: `https://www.anna-stays.fi/find-booking`,
       metadata: {
         bookingId: booking.id,
         referenceNumber: booking.reference_number,
-      },
-      automatic_payment_methods: {
-        enabled: true,
-        allow_redirects: 'never',
+        source: 'approve_booking',
       },
     });
 
-    if (paymentIntent.status !== 'succeeded') {
-      return res.status(402).json({ error: 'Payment failed: ' + paymentIntent.status });
-    }
-
-    // 5. Update booking to confirmed in Supabase
+    // 3. Update booking to awaiting_payment and store the payment link + expiry
     const { error: updateError } = await supabase
       .from('bookings')
       .update({
-        status: 'confirmed',
+        status: 'awaiting_payment',
         admin_needs_attention: false,
-        stripe_payment_intent_id: paymentIntent.id,
+        stripe_session_id: session.id,
+        stripe_payment_link_url: session.url,
+        payment_link_expires_at: new Date(expiresAt * 1000).toISOString(),
       })
       .eq('id', bookingId);
 
     if (updateError) {
-      console.error('Failed to update booking status:', updateError);
-      return res.status(500).json({ error: 'Payment succeeded but failed to update booking status' });
+      console.error('Failed to update booking:', updateError);
+      return res.status(500).json({ error: 'Failed to update booking status' });
     }
 
-    // 6. Send confirmation email to guest
-    if (resendKey && booking.guests?.email) {
+    // 4. Send payment link email to guest
+    if (resendKey) {
       try {
-        const guestFirstName = booking.guests?.first_name || 'Guest';
+        const guestFirstName = guest.first_name || 'Guest';
         const aptName = booking.apartment_name || 'the apartment';
 
         await fetch('https://api.resend.com/emails', {
@@ -111,25 +101,41 @@ export default async function handler(req: any, res: any) {
           },
           body: JSON.stringify({
             from: "Anna's Stays <info@anna-stays.fi>",
-            to: [booking.guests.email],
-            subject: 'Booking Confirmed - #' + booking.reference_number + ' | Annas Stays',
-            html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Your Stay is Confirmed</h2><p>Dear ' + guestFirstName + ',</p><p>Great news! Your reservation request for <strong>' + aptName + '</strong> has been approved and your card has been charged.</p><p><strong>Reference:</strong> #' + booking.reference_number + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Guests:</strong> ' + booking.guest_count + '</p><p><strong>Total Charged:</strong> EUR ' + booking.total_price + '</p><p>We will send your entry codes 24 hours before check-in.</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>',
+            to: [guest.email],
+            subject: 'Your Booking Request is Approved — Complete Payment | Anna\'s Stays',
+            html: `
+              <div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;">
+                <h2 style="font-weight:normal;">Great news, ${guestFirstName}!</h2>
+                <p>Your booking request for <strong>${aptName}</strong> has been approved.</p>
+                <p><strong>Reference:</strong> #${booking.reference_number}</p>
+                <p><strong>Check-in:</strong> ${booking.check_in}</p>
+                <p><strong>Check-out:</strong> ${booking.check_out}</p>
+                <p><strong>Guests:</strong> ${booking.guest_count}</p>
+                <p><strong>Total:</strong> EUR ${booking.total_price}</p>
+                <p>To confirm your stay, please complete your payment within <strong>24 hours</strong> using the link below. After 24 hours this link will expire and the dates will be released.</p>
+                <div style="text-align:center;margin:32px 0;">
+                  <a href="${session.url}" style="background:#3D4F3E;color:#ffffff;padding:16px 32px;text-decoration:none;font-family:sans-serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Complete Payment →</a>
+                </div>
+                <p style="font-size:12px;color:#7A756E;">If the button doesn't work, copy this link: ${session.url}</p>
+                <p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p>
+              </div>
+            `,
           }),
         });
-        console.log('Confirmation email sent to ' + booking.guests.email);
+        console.log('Payment link email sent to ' + guest.email);
       } catch (emailErr) {
         console.error('Email failed (non-critical):', emailErr);
       }
     }
 
-    // 7. Send ntfy notification
+    // 5. Send ntfy notification
     try {
       await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
         method: 'POST',
-        body: 'Approved & charged: ' + (booking.guests?.first_name || '') + ' ' + (booking.guests?.last_name || '') + ' | ' + booking.reference_number + ' | EUR ' + booking.total_price,
+        body: 'Approved and payment link sent to ' + guest.first_name + ' ' + guest.last_name + ' | ' + booking.reference_number + ' | EUR ' + booking.total_price,
         headers: {
-          'Title': 'Booking Approved',
-          'Priority': 'high',
+          'Title': 'Booking Approved — Awaiting Payment',
+          'Priority': 'default',
           'Content-Type': 'text/plain',
         },
       });
@@ -137,7 +143,7 @@ export default async function handler(req: any, res: any) {
       console.error('ntfy failed (non-critical):', ntfyErr);
     }
 
-    return res.status(200).json({ success: true, paymentIntentId: paymentIntent.id });
+    return res.status(200).json({ success: true, paymentUrl: session.url });
 
   } catch (err: any) {
     console.error('Approve booking error:', err);
