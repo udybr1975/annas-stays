@@ -19,6 +19,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import { Routes, Route, useLocation, Link, useNavigate } from "react-router-dom";
 import ManageBooking from "./components/ManageBooking";
 import FindBooking from "./components/FindBooking";
+import BookingSuccess from "./components/BookingSuccess";
 
 export default function App() {
   const navigate = useNavigate();
@@ -116,6 +117,7 @@ export default function App() {
     <Routes>
       <Route path="/manage-booking/:id" element={<ManageBooking listings={listings} />} />
       <Route path="/find-booking" element={<FindBooking />} />
+      <Route path="/booking-success" element={<BookingSuccess />} />
       <Route path="/admin" element={<AdminDashboard onClose={() => { navigate("/"); }} />} />
       <Route path="/" element={<LandingPage listings={listings} specialPrices={specialPrices} fetchListings={fetchListings} isAdmin={isAdmin} />} />
     </Routes>
