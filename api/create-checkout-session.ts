@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
 
 export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' as any });
   const { booking, listing, guest, isInstantBook } = req.body;
 
@@ -27,9 +29,10 @@ export default async function handler(req: any, res: any) {
         guestFirstName: String(guest.firstName),
         guestLastName: String(guest.lastName),
         totalPrice: String(booking.totalPrice),
-        guestCount: String(booking.guestCount)
+        guestCount: String(booking.guestCount) // This MUST be here for the webhook!
       },
     });
+
     return res.status(200).json({ url: session.url });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
