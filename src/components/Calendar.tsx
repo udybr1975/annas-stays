@@ -27,17 +27,23 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
   const fetchBookedDates = async () => {
     const { data, error } = await supabase
       .from('bookings')
-      .select('check_in, check_out')
+      .select('check_in, check_out, status, payment_link_expires_at')
       .eq('apartment_id', listingId)
-      .not('status', 'in', '("cancelled","declined")');
+      .in('status', ['confirmed', 'awaiting_payment']);
 
     if (error) {
       console.error("Error fetching booked dates:", error);
       return;
     }
 
+    const now = new Date();
     const dates: string[] = [];
-    data.forEach(booking => {
+    (data || []).forEach(booking => {
+      // For awaiting_payment: only block if the payment link has not yet expired
+      if (booking.status === 'awaiting_payment' && booking.payment_link_expires_at) {
+        const expires = new Date(booking.payment_link_expires_at);
+        if (expires <= now) return; // link expired — release the dates
+      }
       let curr = new Date(booking.check_in);
       const last = new Date(booking.check_out);
       while (curr < last) {
@@ -47,6 +53,7 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
     });
     setBookedDates(dates);
   };
+
   const daysInMonth = new Date(calY, calM + 1, 0).getDate();
   const firstDow = new Date(calY, calM, 1).getDay();
   const offset = firstDow === 0 ? 6 : firstDow - 1;
@@ -66,28 +73,20 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
     const day = date.getDay();
     const isWeekend = day === 5 || day === 6;
 
-    // Priority 1: Event
     const event = specialPrices.find(p => {
       if (p.pricing_type === 'season') return false;
-      const s = new Date(p.start_date || p.date);
-      s.setHours(0, 0, 0, 0);
-      const e = new Date(p.end_date || p.date);
-      e.setHours(0, 0, 0, 0);
+      const s = new Date(p.start_date || p.date); s.setHours(0, 0, 0, 0);
+      const e = new Date(p.end_date || p.date); e.setHours(0, 0, 0, 0);
       return date >= s && date <= e;
     });
-
     if (event) return { type: 'event', name: event.event_name, price: event.price_override || event.price, isWeekend };
 
-    // Priority 2: Season
     const season = specialPrices.find(p => {
       if (p.pricing_type !== 'season') return false;
-      const s = new Date(p.start_date);
-      s.setHours(0, 0, 0, 0);
-      const e = new Date(p.end_date);
-      e.setHours(0, 0, 0, 0);
+      const s = new Date(p.start_date); s.setHours(0, 0, 0, 0);
+      const e = new Date(p.end_date); e.setHours(0, 0, 0, 0);
       return date >= s && date <= e;
     });
-
     if (season) {
       const sType = season.event_name?.toLowerCase().includes('high') ? 'high' : 'shoulder';
       const price = isWeekend ? (season.weekend_price_override || season.price_override) : season.price_override;
@@ -101,37 +100,26 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
     if (isPast(d) || isBooked(d)) return;
     const k = fmt(d);
     if (!start || (start && end)) {
-      setStart(k);
-      setEnd(null);
+      setStart(k); setEnd(null);
       onRangeChange && onRangeChange({ start: k, end: null });
     } else {
       const s = k < start ? k : start;
       const e = k < start ? start : k;
-
-      // Check for overlaps in the range
       let hasOverlap = false;
       let curr = new Date(s);
       const last = new Date(e);
-      
       while (curr < last) {
         const checkStr = curr.toISOString().split('T')[0];
-        if (bookedDates.includes(checkStr)) {
-          hasOverlap = true;
-          break;
-        }
+        if (bookedDates.includes(checkStr)) { hasOverlap = true; break; }
         curr.setDate(curr.getDate() + 1);
       }
-
       if (hasOverlap) {
         alert("Your selection includes dates that are already booked. Please choose a different range.");
-        setStart(null);
-        setEnd(null);
+        setStart(null); setEnd(null);
         onRangeChange && onRangeChange({ start: null, end: null });
         return;
       }
-
-      setStart(s);
-      setEnd(e);
+      setStart(s); setEnd(e);
       onRangeChange && onRangeChange({ start: s, end: e });
     }
   };
@@ -144,16 +132,12 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
         <button
           onClick={() => calM === 0 ? (setCalM(11), setCalY(y => y - 1)) : setCalM(m => m - 1)}
           className="bg-none border border-mist px-3 py-1 cursor-pointer text-sm text-muted font-sans hover:bg-mist/20 transition-colors"
-        >
-          ‹
-        </button>
+        >‹</button>
         <span className="font-serif text-lg font-light">{MONTHS[calM]} {calY}</span>
         <button
           onClick={() => calM === 11 ? (setCalM(0), setCalY(y => y + 1)) : setCalM(m => m + 1)}
           className="bg-none border border-mist px-3 py-1 cursor-pointer text-sm text-muted font-sans hover:bg-mist/20 transition-colors"
-        >
-          ›
-        </button>
+        >›</button>
       </div>
       <div className="grid grid-cols-7 gap-0.5 mb-0.5">
         {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
@@ -168,27 +152,18 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
           const ir = start && end && dateStr > start && dateStr < end;
           const past = isPast(d), bk = isBooked(d);
           const info = getDayInfo(d);
-          
+
           let bgClass = "bg-transparent";
           let textClass = "text-charcoal";
           let borderClass = "";
 
-          if (sel) {
-            bgClass = "bg-forest";
-            textClass = "text-white";
-          } else if (ir) {
-            bgClass = "bg-forest/20";
-          } else if (!past && !bk) {
-            if (info.type === 'event') {
-              bgClass = "bg-[#FFC107]";
-              textClass = "text-white";
-            } else if (info.type === 'high') {
-              bgClass = "bg-[#E0F7FA]";
-            } else if (info.type === 'shoulder') {
-              borderClass = "border-b-2 border-[#E0F7FA]";
-            }
+          if (sel) { bgClass = "bg-forest"; textClass = "text-white"; }
+          else if (ir) { bgClass = "bg-forest/20"; }
+          else if (!past && !bk) {
+            if (info.type === 'event') { bgClass = "bg-[#FFC107]"; textClass = "text-white"; }
+            else if (info.type === 'high') { bgClass = "bg-[#E0F7FA]"; }
+            else if (info.type === 'shoulder') { borderClass = "border-b-2 border-[#E0F7FA]"; }
           }
-
           if (past || bk) textClass = "text-[#ddd]";
 
           return (
@@ -203,8 +178,6 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
               {info.isWeekend && !sel && !ir && !past && !bk && (
                 <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-muted/40 rounded-full" />
               )}
-              
-              {/* Tooltip */}
               {hoveredDate === dateStr && !sel && !ir && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[50] pointer-events-none">
                   <div className="bg-charcoal text-white text-[0.65rem] py-1.5 px-2.5 rounded shadow-xl whitespace-nowrap flex flex-col items-center gap-0.5">
@@ -218,8 +191,7 @@ export default function Calendar({ listingId, onRangeChange, specialPrices = [],
           );
         })}
       </div>
-      
-      {/* Visual Legend */}
+
       <div className="mt-6 pt-4 border-t border-mist flex flex-wrap gap-x-6 gap-y-2 justify-center">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 bg-[#FFC107] rounded-full" />
