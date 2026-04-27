@@ -357,7 +357,7 @@ export default function ChatBot({
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: "gemini-2.0-flash",
         contents: [
           ...history.map(h => ({
             role: h.role,
