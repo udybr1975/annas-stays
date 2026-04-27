@@ -1,63 +1,82 @@
 import { useState, useEffect } from "react";
+import { GoogleGenAI } from "@google/genai";
 
 export default function EventsPage({ onClose }: { onClose: () => void }) {
   const [events, setEvents] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
+  const loadEvents = async () => {
+    setLoading(true);
+    setError(null);
+    setEvents(null);
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setError("API key not configured.");
+      setLoading(false);
+      return;
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const now = new Date();
+    const monthYear = now.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+
+    const MAX_RETRIES = 3;
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        
-        // Gemini 1.5 was retired. We are switching to the stable 2.5 Flash model.
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: "List 5-7 real events happening in Helsinki this week (April 2026). Return ONLY a JSON object: { \"week\": \"April 2026\", \"categories\": [ { \"name\": \"Events\", \"events\": [ { \"title\": \"Name\", \"venue\": \"Venue\", \"date\": \"Date\", \"desc\": \"Desc\", \"price\": \"Price\" } ] } ] }"
-                }]
-              }],
-              generationConfig: { 
-                responseMimeType: "application/json" 
-              }
-            })
-          }
-        );
-
-        const result = await response.json();
-
-        if (result.error) {
-          // If 2.5 is also busy, we try the newest Gemini 3 Flash as a fallback
-          throw new Error(result.error.message);
+        // Wait before retrying (not before first attempt)
+        if (attempt > 1) {
+          await new Promise(r => setTimeout(r, attempt * 2000));
         }
 
-        const text = result.candidates[0].content.parts[0].text;
-        setEvents(JSON.parse(text));
-      } catch (e: any) {
-        console.error("Helsinki Guide Error:", e);
-        setError("The AI models are updating. Please try again in a few seconds.");
-      } finally {
-        setLoading(false);
-      }
-    };
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [{
+            role: "user",
+            parts: [{
+              text: `Today is ${today}. List 5-7 real events happening in Helsinki between ${today} and ${until} (the next 7 days only). Do not include past events. Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: { "week": "${monthYear}", "categories": [ { "name": "Events", "events": [ { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } ] } ] }`
+            }]
+          }],
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
 
-    fetchEvents();
+        const text = response.text || "";
+        const clean = text.replace(/```json|```/g, "").trim();
+        setEvents(JSON.parse(clean));
+        setLoading(false);
+        return; // Success — stop retrying
+
+      } catch (e: any) {
+        lastError = e;
+        const msg = (e?.message || "").toLowerCase();
+        const isRetryable = msg.includes("503") || msg.includes("high demand") || msg.includes("unavailable") || msg.includes("overload");
+        console.warn(`Helsinki Guide: attempt ${attempt} failed — ${e?.message}`);
+        if (!isRetryable) break; // Don't retry non-503 errors
+      }
+    }
+
+    // All retries exhausted
+    console.error("Helsinki Guide Error:", lastError);
+    setError("Helsinki events couldn't load right now — Google's AI is busy. Please try again in a moment.");
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadEvents();
   }, []);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
-      <div 
+      <div
         className="bg-[#fdfcfb] w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl shadow-2xl relative p-8 md:p-12"
         onClick={e => e.stopPropagation()}
       >
-        <button 
-          onClick={onClose} 
-          className="absolute top-6 right-6 text-gray-400 hover:text-black text-2xl transition-colors"
-        >
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-black text-2xl transition-colors">
           ✕
         </button>
 
@@ -75,15 +94,20 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
 
         {error && (
           <div className="bg-red-50 p-6 rounded-lg text-center">
-            <p className="text-red-800 text-sm">{error}</p>
-            <button onClick={() => window.location.reload()} className="mt-4 text-xs underline opacity-70">Try again</button>
+            <p className="text-red-800 text-sm mb-4">{error}</p>
+            <button
+              onClick={loadEvents}
+              className="text-xs bg-[#1a3c34] text-white px-4 py-2 rounded hover:bg-[#1a3c34]/80 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         )}
 
         {events && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <p className="text-xs text-gray-400 border-b pb-4 border-gray-100">{events.week}</p>
-            
+
             {events.categories?.map((cat: any, i: number) => (
               <section key={i}>
                 <h3 className="text-lg font-serif text-[#1a3c34] mb-6 flex items-center gap-3">
@@ -104,7 +128,7 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
                 </div>
               </section>
             ))}
-            
+
             <footer className="pt-10 text-center">
               <p className="text-[10px] text-gray-300 uppercase tracking-widest">Handpicked by Anna's Stays Helsinki</p>
             </footer>
