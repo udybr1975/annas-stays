@@ -83,7 +83,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     message: string;
   } | null>(null);
 
-  const handleConfirmAction = () => {
+const handleConfirmAction = () => {
     if (!confirmation) return;
     
     if (confirmation.type === 'accept') {
@@ -92,6 +92,8 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
       onUpdateBookingStatus?.(confirmation.bookingId, 'declined');
     } else if (confirmation.type === 'cancel') {
       onCancelBooking(confirmation.bookingId);
+    } else if (confirmation.type === 'resend') {
+      onUpdateBookingStatus?.(confirmation.bookingId, 'resend_payment_link');
     }
     
     setConfirmation(null);
@@ -682,42 +684,51 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                   </button>
                 )}
 
-                {selectedBooking.status === 'pending' ? (
+{selectedBooking.status === 'pending' && (
                   <>
                     <button
-                      onClick={() => {
-                        setConfirmation({
-                          type: 'accept',
-                          bookingId: selectedBooking.id,
-                          message: "Are you sure you want to accept this reservation request?"
-                        });
-                      }}
+                      onClick={() => setConfirmation({ type: 'accept', bookingId: selectedBooking.id, message: "Approve this request? A payment link will be sent to the guest by email." })}
                       className="w-full bg-forest text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-forest/90 transition-all flex items-center justify-center gap-2"
                     >
-                      Accept Request
+                      Approve & Send Payment Link
                     </button>
                     <button
-                      onClick={() => {
-                        setConfirmation({
-                          type: 'decline',
-                          bookingId: selectedBooking.id,
-                          message: "Are you sure you want to decline this reservation request?"
-                        });
-                      }}
+                      onClick={() => setConfirmation({ type: 'decline', bookingId: selectedBooking.id, message: "Are you sure you want to decline this reservation request?" })}
                       className="w-full bg-clay text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-clay/90 transition-all flex items-center justify-center gap-2"
                     >
                       <Trash2 size={14} /> Decline Request
                     </button>
                   </>
-                ) : (
+                )}
+
+                {selectedBooking.status === 'awaiting_payment' && (
+                  <>
+                    <div className="w-full p-3 bg-clay/10 border border-clay/20 text-clay text-[0.68rem] tracking-wide uppercase font-medium text-center">
+                      Awaiting Guest Payment
+                      {selectedBooking.payment_link_expires_at && (
+                        <span className="block normal-case text-[0.65rem] mt-1 text-muted">
+                          Link expires: {new Date(selectedBooking.payment_link_expires_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setConfirmation({ type: 'resend', bookingId: selectedBooking.id, message: "Resend a new 24-hour payment link to the guest?" })}
+                      className="w-full bg-charcoal text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-charcoal/90 transition-all flex items-center justify-center gap-2"
+                    >
+                      Resend Payment Link
+                    </button>
+                    <button
+                      onClick={() => setConfirmation({ type: 'cancel', bookingId: selectedBooking.id, message: "Cancel this reservation and release the dates?" })}
+                      className="w-full bg-clay text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-clay/90 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Trash2 size={14} /> Cancel & Release Dates
+                    </button>
+                  </>
+                )}
+
+                {selectedBooking.status === 'confirmed' && (
                   <button
-                    onClick={() => {
-                      setConfirmation({
-                        type: 'cancel',
-                        bookingId: selectedBooking.id,
-                        message: "Are you sure you want to cancel this reservation?"
-                      });
-                    }}
+                    onClick={() => setConfirmation({ type: 'cancel', bookingId: selectedBooking.id, message: "Are you sure you want to cancel this confirmed reservation?" })}
                     className="w-full bg-clay text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-clay/90 transition-all flex items-center justify-center gap-2"
                   >
                     <Trash2 size={14} /> Cancel Reservation
