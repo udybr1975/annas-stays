@@ -1,12 +1,80 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { Check, Clock, ArrowLeft, Phone, Mail } from "lucide-react";
+import { Check, Clock, CreditCard, ArrowLeft, Phone, Mail } from "lucide-react";
 import { motion } from "motion/react";
 
 export default function BookingSuccess() {
   const [searchParams] = useSearchParams();
   const ref = searchParams.get("ref") || "—";
   const isPending = searchParams.get("pending") === "true";
+  const isPaid = searchParams.get("paid") === "true";
+
+  // isPaid = guest just paid via the approval payment link
+  // isPending = guest just submitted a request (no payment yet)
+  // neither = instant book confirmed
+
+  const getContent = () => {
+    if (isPaid) {
+      return {
+        icon: <Check className="text-forest" size={36} />,
+        iconBg: "bg-forest/10",
+        bar: "bg-forest",
+        title: "Booking Confirmed",
+        body: (
+          <>
+            <p className="mb-4">Dear guest,</p>
+            <p className="text-muted">
+              Your payment has been received and your stay at Anna's Stays is confirmed.
+              We are so excited to welcome you to Helsinki!
+            </p>
+            <p className="mt-4 text-muted">
+              You will receive your entry codes by email 24 hours before check-in.
+            </p>
+          </>
+        ),
+      };
+    }
+    if (isPending) {
+      return {
+        icon: <Clock className="text-clay" size={36} />,
+        iconBg: "bg-clay/10",
+        bar: "bg-clay",
+        title: "Request Received",
+        body: (
+          <>
+            <p className="mb-4">Dear guest,</p>
+            <p className="text-muted">
+              Thank you for your booking request. We will review it and get back to you by email shortly.
+            </p>
+            <p className="mt-4 text-muted">
+              If approved, you will receive a <strong className="not-italic text-charcoal">secure payment link</strong> by email. No payment is required now.
+            </p>
+          </>
+        ),
+      };
+    }
+    // Instant book
+    return {
+      icon: <Check className="text-forest" size={36} />,
+      iconBg: "bg-forest/10",
+      bar: "bg-forest",
+      title: "Booking Confirmed",
+      body: (
+        <>
+          <p className="mb-4">Dear guest,</p>
+          <p className="text-muted">
+            Your payment has been received and your stay at Anna's Stays is confirmed.
+            We are so excited to welcome you to Helsinki!
+          </p>
+          <p className="mt-4 text-muted">
+            You will receive your entry codes by email 24 hours before check-in.
+          </p>
+        </>
+      ),
+    };
+  };
+
+  const content = getContent();
 
   return (
     <div className="min-h-screen bg-warm-white flex items-center justify-center p-6">
@@ -17,49 +85,20 @@ export default function BookingSuccess() {
         className="max-w-lg w-full"
       >
         <div className="bg-white border border-mist shadow-2xl p-10 md:p-14 relative overflow-hidden">
-          <div className={`absolute top-0 left-0 w-full h-1 ${isPending ? "bg-clay" : "bg-forest"}`} />
+          <div className={`absolute top-0 left-0 w-full h-1 ${content.bar}`} />
 
           <div className="text-center mb-10">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isPending ? "bg-clay/10" : "bg-forest/10"}`}>
-              {isPending
-                ? <Clock className="text-clay" size={36} />
-                : <Check className="text-forest" size={36} />
-              }
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${content.iconBg}`}>
+              {content.icon}
             </div>
-
-            <h1 className="font-serif text-3xl font-light mb-3">
-              {isPending ? "Request Received" : "Booking Confirmed"}
-            </h1>
-
+            <h1 className="font-serif text-3xl font-light mb-3">{content.title}</h1>
             <p className="text-[0.65rem] tracking-[0.2em] uppercase text-muted font-sans">
               Reference: <span className="text-charcoal font-bold">#{ref}</span>
             </p>
           </div>
 
           <div className="bg-cream/50 border border-mist/50 p-6 mb-8 font-serif italic leading-relaxed text-[1rem]">
-            {isPending ? (
-              <>
-                <p className="mb-4">Dear guest,</p>
-                <p className="text-muted">
-                  Thank you for your booking request. Your card has been saved securely —{" "}
-                  <strong className="not-italic text-charcoal">you will only be charged if your request is approved.</strong>
-                </p>
-                <p className="mt-4 text-muted">
-                  We will review your request and notify you by email within a few hours.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mb-4">Dear guest,</p>
-                <p className="text-muted">
-                  Your payment has been received and your stay at Anna's Stays is confirmed.
-                  We are so excited to welcome you to Helsinki!
-                </p>
-                <p className="mt-4 text-muted">
-                  You will receive your entry codes by email 24 hours before check-in.
-                </p>
-              </>
-            )}
+            {content.body}
             <div className="mt-6 not-italic">
               <p className="font-cursive text-2xl text-clay">Anna Humalainen</p>
               <p className="text-[0.6rem] tracking-[0.2em] uppercase text-muted font-sans">Host</p>
@@ -80,7 +119,7 @@ export default function BookingSuccess() {
 
           <div className="flex flex-col gap-3">
             <Link
-              to={`/find-booking`}
+              to="/find-booking"
               className="w-full p-4 bg-charcoal text-white font-sans text-[0.7rem] tracking-[0.2em] uppercase text-center no-underline hover:bg-charcoal/90 transition-all"
             >
               Manage My Booking
