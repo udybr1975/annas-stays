@@ -218,8 +218,8 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   // ─── THIS IS THE ONLY CHANGED FUNCTION ───────────────────────────────────────
   const updateBookingStatus = async (id: string, status: string) => {
     if (status === 'confirmed') {
-      // For approval: call the approve endpoint which charges the card first
-      showToast("Charging card and confirming booking...", "info");
+      // Approve: call approve-booking which creates payment link and emails guest
+      showToast("Approving and sending payment link...", "info");
       try {
         const response = await fetch('/api/approve-booking', {
           method: 'POST',
@@ -228,16 +228,35 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         });
         const result = await response.json();
         if (!response.ok) {
-          showToast(`Error: ${result.error || 'Could not charge card'}`, "error");
+          showToast(`Error: ${result.error || 'Could not approve booking'}`, "error");
           return;
         }
-        showToast("Booking approved and card charged successfully", "success");
-        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'confirmed', admin_needs_attention: false } : b));
+        showToast("Approved — payment link sent to guest", "success");
+        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'awaiting_payment', admin_needs_attention: false } : b));
+      } catch (err: any) {
+        showToast(`Unexpected error: ${err.message}`, "error");
+      }
+    } else if (status === 'resend_payment_link') {
+      // Resend: call approve-booking again which creates a fresh payment link
+      showToast("Sending a new payment link...", "info");
+      try {
+        const response = await fetch('/api/approve-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: id }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(`Error: ${result.error || 'Could not resend payment link'}`, "error");
+          return;
+        }
+        showToast("New payment link sent to guest", "success");
+        fetchBookings();
       } catch (err: any) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
     } else {
-      // For decline: just update Supabase status directly
+      // Decline: update Supabase directly
       showToast("Declining reservation request...", "info");
       const { error } = await supabase
         .from("bookings")
