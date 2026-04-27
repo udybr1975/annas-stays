@@ -124,19 +124,19 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // --- STRIPE SUCCESS DETECTION ---
   const [stripeSuccessStep, setStripeSuccessStep] = useState<number | undefined>(undefined);
 
+  // --- STRIPE SUCCESS DETECTION ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('status') === 'success' && listings.length > 0) {
-      const aptId = params.get('apartmentId');
-      const apt = listings.find(l => String(l.id) === String(aptId));
+      const lastId = localStorage.getItem('last_booked_id');
+      const apt = listings.find(l => String(l.id) === String(lastId));
       if (apt) {
         setBooking(apt);
         setStripeSuccessStep(4); 
       }
+      // Clear URL params
       window.history.replaceState({}, document.title, "/");
     }
   }, [listings]);
@@ -211,7 +211,6 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </nav>
 
-      {/* Hero Section */}
       <div className="hero-grid grid grid-cols-1 lg:grid-cols-2 min-h-[90vh]">
         <div className="hero-left bg-cream flex flex-col justify-center p-10 md:p-24">
           <h1 className="hero-title font-serif text-[4.5rem] md:text-[6.5rem] font-light leading-[0.95] mb-10">Your home<br />in <em className="text-forest italic">Helsinki,</em>awaits.</h1>
@@ -229,11 +228,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* Stays Section */}
       <div ref={refs.stays} className="sec-pad p-10 md:p-24 px-6 md:px-12 scroll-mt-[70px]">
-        <div className="flex justify-between items-end mb-16">
-          <h2 className="font-serif text-5xl md:text-6xl font-light">Our Studios</h2>
-        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
           {listings.map(l => (
             <div key={l.id} className="bg-warm-white border border-mist shadow-sm hover:shadow-xl transition-all">
@@ -250,89 +245,11 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* Helsinki Guide Section */}
-      <div ref={refs.guide} className="bg-cream py-24 scroll-mt-[70px]">
-        <div className="container mx-auto px-6 md:px-12">
-          <h2 className="font-serif text-5xl font-light mb-12">Helsinki Guide</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {Object.keys(GUIDE_DATA).map(cat => (
-              <div key={cat} onClick={() => setGuideModal(cat)} className="bg-white p-8 border border-mist cursor-pointer hover:border-clay transition-colors group">
-                <h3 className="font-serif text-xl capitalize mb-2">{cat}</h3>
-                <p className="text-muted text-[0.65rem] uppercase tracking-widest group-hover:text-clay">Explore →</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Extras Section */}
-      <div ref={refs.extras} className="py-24 border-y border-mist scroll-mt-[70px]">
-        <div className="container mx-auto px-6 text-center">
-            <h2 className="font-serif text-5xl font-light mb-12">Extras</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
-                <div className="text-left p-10 bg-warm-white border border-mist">
-                    <h3 className="font-serif text-2xl mb-4">Car Rental</h3>
-                    <p className="text-muted text-sm leading-relaxed mb-6">Private car rental ready at your apartment. €55 / day.</p>
-                </div>
-                <div className="text-left p-10 bg-warm-white border border-mist">
-                    <h3 className="font-serif text-2xl mb-4">Airport Transfer</h3>
-                    <p className="text-muted text-sm leading-relaxed mb-6">Hassle-free pickup from Helsinki-Vantaa. €35 flat rate.</p>
-                </div>
-            </div>
-        </div>
-      </div>
-
-      {/* Reviews Section */}
-      <div ref={refs.reviews} className="py-24 bg-charcoal text-cream scroll-mt-[70px]">
-        <div className="container mx-auto px-6 text-center">
-            <Star className="text-clay mx-auto mb-8" />
-            <p className="font-serif text-3xl md:text-4xl font-light max-w-3xl mx-auto leading-tight italic">
-                "{REVIEWS[reviewIdx].text}"
-            </p>
-            <p className="mt-8 text-clay uppercase tracking-widest text-xs">- {REVIEWS[reviewIdx].author}</p>
-        </div>
-      </div>
-
-      {/* FAQ Section */}
-      <div ref={refs.faq} className="py-24 scroll-mt-[70px]">
-        <div className="max-w-3xl mx-auto px-6">
-            <h2 className="font-serif text-5xl font-light mb-12 text-center">FAQ</h2>
-            <div className="space-y-4">
-                {FAQS.map((faq, i) => (
-                    <div key={i} className="border-b border-mist pb-4">
-                        <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full text-left flex justify-between items-center py-4 group">
-                            <span className="font-serif text-xl group-hover:text-clay transition-colors">{faq.q}</span>
-                            <span className="text-clay">{openFaq === i ? '−' : '+'}</span>
-                        </button>
-                        <AnimatePresence>
-                          {openFaq === i && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                              <p className="text-muted text-sm pb-4">{faq.a}</p>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                    </div>
-                ))}
-            </div>
-        </div>
-      </div>
-
-      {/* Contact Section */}
-      <div ref={refs.contact} className="py-32 border-t border-mist bg-warm-white scroll-mt-[70px]">
-          <div className="container mx-auto px-6 text-center">
-              <h2 className="font-serif text-6xl font-light mb-8 italic">Say Hello</h2>
-              <p className="text-muted text-xl">hello@annasstays.fi</p>
-          </div>
-      </div>
-
-      {/* Footer */}
-      <footer className="bg-charcoal p-12 px-6 md:px-12 flex flex-col md:flex-row justify-between items-center gap-6">
-        <div className="font-serif text-xl text-cream">Anna's <em className="text-clay italic">Stays</em></div>
-        <div className="text-mist text-xs uppercase tracking-widest font-sans">© 2026 Anna's Stays Helsinki</div>
-        <div className="text-mist text-xs font-sans">hello@annasstays.fi</div>
+      <footer className="bg-charcoal p-12 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="font-serif text-xl text-cream">Anna's <em className="text-birch italic">Stays</em></div>
+        <div className="text-birch text-sm">hello@annasstays.fi</div>
       </footer>
 
-      {/* Modals & Widgets */}
       {booking && (
         <BookingModal 
           listing={booking} 
