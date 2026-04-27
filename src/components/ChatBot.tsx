@@ -346,7 +346,7 @@ export default function ChatBot({
 
     try {
       // Robust API key retrieval - following skill recommendations
-      const apiKey = "AIzaSyBQKHNsImtU_efF6N2bheZdKIw6y9E69i0";
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       
       if (!apiKey) {
         setMsgs(p => [...p, { role: "assistant", text: "I'm sorry, I can't connect to my brain right now (API key missing). Please check the settings!" }]);
