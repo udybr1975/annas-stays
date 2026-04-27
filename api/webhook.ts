@@ -177,7 +177,7 @@ export default async function handler(req: any, res: any) {
   }
 
   // ntfy push notification
-  const ntfyTitle = isInstant ? 'New Confirmed Booking 🎉' : 'New Booking Request 📩';
+  const ntfyTitle = isInstant ? 'New Confirmed Booking' : 'New Booking Request';
   const ntfyBody = isInstant
     ? `💰 ${m.guestFirstName} ${m.guestLastName} | ${m.apartmentName} | ${m.checkIn} → ${m.checkOut} | ${m.guestCount} guest(s) | €${m.totalPrice}`
     : `📋 ${m.guestFirstName} ${m.guestLastName} wants to book ${m.apartmentName} | ${m.checkIn} → ${m.checkOut} | Card saved, awaiting your approval`;
