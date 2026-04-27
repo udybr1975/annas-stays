@@ -132,7 +132,7 @@ export default async function handler(req: any, res: any) {
           'Authorization': 'Bearer ' + resendKey,
         },
         body: JSON.stringify({
-          from: 'Anna from Helsinki <onboarding@resend.dev>',
+          from: "Anna's Stays <info@anna-stays.fi>",
           to: [m.guestEmail],
           subject: subject,
           html: emailHtml,
