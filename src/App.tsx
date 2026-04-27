@@ -124,8 +124,8 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // --- STRIPE SUCCESS LOGIC ---
+  
+  // --- STRIPE SUCCESS DETECTION ---
   const [stripeSuccessStep, setStripeSuccessStep] = useState<number | undefined>(undefined);
 
   useEffect(() => {
@@ -211,11 +211,13 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </nav>
 
-      {/* Hero */}
+      {/* Hero Section */}
       <div className="hero-grid grid grid-cols-1 lg:grid-cols-2 min-h-[90vh]">
         <div className="hero-left bg-cream flex flex-col justify-center p-10 md:p-24">
           <h1 className="hero-title font-serif text-[4.5rem] md:text-[6.5rem] font-light leading-[0.95] mb-10">Your home<br />in <em className="text-forest italic">Helsinki,</em>awaits.</h1>
-          <button onClick={() => scrollTo("stays")} className="bg-forest text-white p-4.5 px-10 font-sans text-[0.7rem] uppercase tracking-widest w-fit">Explore stays</button>
+          <div className="flex gap-4">
+            <button onClick={() => scrollTo("stays")} className="bg-forest text-white p-4.5 px-10 font-sans text-[0.7rem] uppercase tracking-widest">Explore stays</button>
+          </div>
         </div>
         <div className="hero-right grid grid-cols-[1.6fr_1fr] grid-rows-2 gap-0.5 bg-mist">
           {listings.slice(0, 3).map((l, i) => (
@@ -248,22 +250,22 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* HELSINKI GUIDE SECTION (The part I deleted previously) */}
+      {/* Helsinki Guide Section */}
       <div ref={refs.guide} className="bg-cream py-24 scroll-mt-[70px]">
         <div className="container mx-auto px-6 md:px-12">
           <h2 className="font-serif text-5xl font-light mb-12">Helsinki Guide</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {Object.keys(GUIDE_DATA).map(cat => (
-              <div key={cat} onClick={() => setGuideModal(cat)} className="bg-white p-8 border border-mist cursor-pointer hover:border-clay transition-colors">
-                <h3 className="font-serif text-xl capitalize">{cat}</h3>
-                <p className="text-muted text-xs mt-2 uppercase tracking-widest">Explore →</p>
+              <div key={cat} onClick={() => setGuideModal(cat)} className="bg-white p-8 border border-mist cursor-pointer hover:border-clay transition-colors group">
+                <h3 className="font-serif text-xl capitalize mb-2">{cat}</h3>
+                <p className="text-muted text-[0.65rem] uppercase tracking-widest group-hover:text-clay">Explore →</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* EXTRAS SECTION */}
+      {/* Extras Section */}
       <div ref={refs.extras} className="py-24 border-y border-mist scroll-mt-[70px]">
         <div className="container mx-auto px-6 text-center">
             <h2 className="font-serif text-5xl font-light mb-12">Extras</h2>
@@ -280,7 +282,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* REVIEWS SECTION */}
+      {/* Reviews Section */}
       <div ref={refs.reviews} className="py-24 bg-charcoal text-cream scroll-mt-[70px]">
         <div className="container mx-auto px-6 text-center">
             <Star className="text-clay mx-auto mb-8" />
@@ -291,38 +293,46 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         </div>
       </div>
 
-      {/* FAQ SECTION */}
+      {/* FAQ Section */}
       <div ref={refs.faq} className="py-24 scroll-mt-[70px]">
         <div className="max-w-3xl mx-auto px-6">
             <h2 className="font-serif text-5xl font-light mb-12 text-center">FAQ</h2>
             <div className="space-y-4">
                 {FAQS.map((faq, i) => (
                     <div key={i} className="border-b border-mist pb-4">
-                        <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full text-left flex justify-between items-center py-4">
-                            <span className="font-serif text-xl">{faq.q}</span>
-                            <span>{openFaq === i ? '−' : '+'}</span>
+                        <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full text-left flex justify-between items-center py-4 group">
+                            <span className="font-serif text-xl group-hover:text-clay transition-colors">{faq.q}</span>
+                            <span className="text-clay">{openFaq === i ? '−' : '+'}</span>
                         </button>
-                        {openFaq === i && <p className="text-muted text-sm pb-4">{faq.a}</p>}
+                        <AnimatePresence>
+                          {openFaq === i && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                              <p className="text-muted text-sm pb-4">{faq.a}</p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                     </div>
                 ))}
             </div>
         </div>
       </div>
 
-      {/* CONTACT/ABOUT SECTION */}
-      <div ref={refs.contact} className="py-24 border-t border-mist bg-warm-white scroll-mt-[70px]">
+      {/* Contact Section */}
+      <div ref={refs.contact} className="py-32 border-t border-mist bg-warm-white scroll-mt-[70px]">
           <div className="container mx-auto px-6 text-center">
-              <h2 className="font-serif text-5xl font-light mb-8 italic">Say Hello</h2>
-              <p className="text-muted mb-12">hello@annasstays.fi</p>
+              <h2 className="font-serif text-6xl font-light mb-8 italic">Say Hello</h2>
+              <p className="text-muted text-xl">hello@annasstays.fi</p>
           </div>
       </div>
 
-      <footer className="bg-charcoal p-12 flex flex-col md:flex-row justify-between items-center gap-6">
-        <div className="font-serif text-xl text-cream">Anna's <em className="text-birch italic">Stays</em></div>
-        <div className="text-birch text-sm">© 2026 Anna's Stays Helsinki</div>
+      {/* Footer */}
+      <footer className="bg-charcoal p-12 px-6 md:px-12 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="font-serif text-xl text-cream">Anna's <em className="text-clay italic">Stays</em></div>
+        <div className="text-mist text-xs uppercase tracking-widest font-sans">© 2026 Anna's Stays Helsinki</div>
+        <div className="text-mist text-xs font-sans">hello@annasstays.fi</div>
       </footer>
 
-      {/* MODALS */}
+      {/* Modals & Widgets */}
       {booking && (
         <BookingModal 
           listing={booking} 
