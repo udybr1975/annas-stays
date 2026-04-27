@@ -21,8 +21,21 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
           contents: [{
             role: "user",
             parts: [{
-              text: `List 5-7 real events happening in Helsinki this week (${monthYear}). Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: { "week": "${monthYear}", "categories": [ { "name": "Events", "events": [ { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } ] } ] }`
-            }]
+  text: `List 5-7 real events happening in Helsinki during the specific window of ${dateRange}, 2026. 
+  Do not include events outside this date range.
+  Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: 
+  { 
+    "week": "${dateRange}", 
+    "categories": [ 
+      { 
+        "name": "Events", 
+        "events": [ 
+          { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } 
+        ] 
+      } 
+    ] 
+  }`
+}]
           }],
           config: {
             responseMimeType: "application/json"
