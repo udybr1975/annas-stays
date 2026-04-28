@@ -23,6 +23,7 @@ export default async function handler(req: any, res: any) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const resendKey = process.env.RESEND_API_KEY;
 
   if (!stripeKey || !webhookSecret || !supabaseUrl || !supabaseServiceKey) {
     console.error('Webhook: Missing env vars');
@@ -63,7 +64,6 @@ export default async function handler(req: any, res: any) {
       return res.status(400).send('Booking not found');
     }
 
-    // Idempotency check
     if (booking.status === 'confirmed') {
       console.log('Webhook: Booking already confirmed, skipping');
       return res.status(200).json({ received: true, duplicate: true });
@@ -87,8 +87,6 @@ export default async function handler(req: any, res: any) {
 
     const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
 
-    // Send confirmation email
-    const resendKey = process.env.RESEND_API_KEY;
     if (resendKey && guest?.email) {
       try {
         await fetch('https://api.resend.com/emails', {
@@ -110,7 +108,6 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Send ntfy
     try {
       await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
         method: 'POST',
@@ -128,15 +125,14 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ received: true });
   }
 
-  // ── PATH B: Instant book (original flow, unchanged) ────────────────────────
+  // ── PATH B: Instant book ───────────────────────────────────────────────────
   if (!m || !m.referenceNumber || !m.apartmentId || !m.guestEmail) {
     console.error('Webhook: Missing metadata');
     return res.status(400).send('Missing metadata');
   }
 
-  // Only process instant bookings here — pending no longer goes through Stripe at booking time
   if (m.isInstant !== 'true') {
-    console.log('Webhook: Non-instant booking received without approve_booking source — ignoring');
+    console.log('Webhook: Non-instant booking without approve_booking source — ignoring');
     return res.status(200).json({ received: true, ignored: true });
   }
 
@@ -151,7 +147,6 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ received: true, duplicate: true });
   }
 
-  // Upsert guest
   const { data: guestData, error: guestError } = await supabase
     .from('guests')
     .upsert({
@@ -170,22 +165,22 @@ export default async function handler(req: any, res: any) {
     return res.status(500).send('Failed to save guest');
   }
 
-const { data: bookingData, error: bookingError } = await supabase
-      .from('bookings')
-      .insert({
-        apartment_id: m.apartmentId,
-        guest_id: guestData.id,
-        check_in: m.checkIn,
-        check_out: m.checkOut,
-        total_price: parseFloat(m.totalPrice),
-        guest_count: parseInt(m.guestCount, 10),
-        status: 'confirmed',
-        reference_number: m.referenceNumber,
-        stripe_session_id: session.id,
-        stripe_payment_intent_id: session.payment_intent || null,
-        admin_needs_attention: true,
-        notes: m.message || null,
-      })
+  const { data: bookingData, error: bookingError } = await supabase
+    .from('bookings')
+    .insert({
+      apartment_id: m.apartmentId,
+      guest_id: guestData.id,
+      check_in: m.checkIn,
+      check_out: m.checkOut,
+      total_price: parseFloat(m.totalPrice),
+      guest_count: parseInt(m.guestCount, 10),
+      status: 'confirmed',
+      reference_number: m.referenceNumber,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: session.payment_intent || null,
+      admin_needs_attention: true,
+      notes: m.message || null,
+    })
     .select('id')
     .single();
 
@@ -196,7 +191,6 @@ const { data: bookingData, error: bookingError } = await supabase
 
   console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
 
-  const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
     try {
       await fetch('https://api.resend.com/emails', {
