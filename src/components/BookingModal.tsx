@@ -293,7 +293,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       }
 
       // 3. ntfy to Anna
-      fetch("https://ntfy.sh/annas-stays-helsinki-99", {
+fetch("https://ntfy.sh/annas-stays-helsinki-99", {
         method: "POST",
         body:
           "New request: " +
@@ -309,8 +309,8 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
           " | EUR " +
           total,
         headers: {
-          Title: "New Booking Request",
-          Priority: "high",
+          "X-Title": "New Booking Request",
+          "X-Priority": "high",
           "Content-Type": "text/plain",
         },
       }).catch(() => {});
