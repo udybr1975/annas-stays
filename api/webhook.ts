@@ -191,14 +191,12 @@ export default async function handler(req: any, res: any) {
 
   console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
 
-  if (resendKey) {
+if (resendKey) {
     try {
+      // Email to guest
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + resendKey,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
           from: "Anna's Stays <info@anna-stays.fi>",
           to: [m.guestEmail],
@@ -207,6 +205,19 @@ export default async function handler(req: any, res: any) {
         }),
       });
       console.log('Email sent to ' + m.guestEmail);
+
+      // Notification email to Anna
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
+        body: JSON.stringify({
+          from: "Anna's Stays <info@anna-stays.fi>",
+          to: ['info@anna-stays.fi'],
+          subject: 'New Confirmed Booking — #' + m.referenceNumber + ' | Anna\'s Stays',
+          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">New Confirmed Booking</h2><p><strong>Guest:</strong> ' + m.guestFirstName + ' ' + m.guestLastName + '</p><p><strong>Email:</strong> <a href="mailto:' + m.guestEmail + '">' + m.guestEmail + '</a></p><p><strong>Apartment:</strong> ' + m.apartmentName + '</p><p><strong>Reference:</strong> #' + m.referenceNumber + '</p><p><strong>Check-in:</strong> ' + m.checkIn + '</p><p><strong>Check-out:</strong> ' + m.checkOut + '</p><p><strong>Guests:</strong> ' + m.guestCount + '</p><p><strong>Total Paid:</strong> EUR ' + m.totalPrice + '</p></div>',
+        }),
+      });
+      console.log('Notification email sent to info@anna-stays.fi');
     } catch (emailErr) {
       console.error('Email failed:', emailErr);
     }
