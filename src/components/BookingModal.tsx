@@ -292,27 +292,27 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
         return;
       }
 
-      // 3. ntfy to Anna
-fetch("https://ntfy.sh/annas-stays-helsinki-99", {
+// 3. ntfy to Anna — via server to avoid browser CORS restrictions
+      fetch("/api/notify", {
         method: "POST",
-        body:
-          "New request: " +
-          form.fn.trim() +
-          " " +
-          form.ln.trim() +
-          " wants " +
-          listing.name +
-          " | " +
-          range.start +
-          " to " +
-          range.end +
-          " | EUR " +
-          total,
-        headers: {
-          "X-Title": "New Booking Request",
-          "X-Priority": "high",
-          "Content-Type": "text/plain",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "New Booking Request",
+          priority: "high",
+          body:
+            "New request: " +
+            form.fn.trim() +
+            " " +
+            form.ln.trim() +
+            " wants " +
+            listing.name +
+            " | " +
+            range.start +
+            " to " +
+            range.end +
+            " | EUR " +
+            total,
+        }),
       }).catch(() => {});
 
       // 4. Acknowledgement email to guest
