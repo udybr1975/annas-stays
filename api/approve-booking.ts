@@ -122,7 +122,20 @@ export default async function handler(req: any, res: any) {
             `,
           }),
         });
-        console.log('Payment link email sent to ' + guest.email);
+console.log('Payment link email sent to ' + guest.email);
+
+        // Notification email to Anna
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
+          body: JSON.stringify({
+            from: "Anna's Stays <info@anna-stays.fi>",
+            to: ['info@anna-stays.fi'],
+            subject: 'Booking Approved — Awaiting Payment | #' + booking.reference_number + ' | Anna\'s Stays',
+            html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Approved — Payment Link Sent</h2><p><strong>Guest:</strong> ' + (guest.first_name || '') + ' ' + (guest.last_name || '') + '</p><p><strong>Email:</strong> <a href="mailto:' + guest.email + '">' + guest.email + '</a></p><p><strong>Reference:</strong> #' + booking.reference_number + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Total:</strong> EUR ' + booking.total_price + '</p><p><strong>Payment link expires:</strong> ' + new Date(expiresAt * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) + '</p></div>',
+          }),
+        });
+        console.log('Notification email sent to info@anna-stays.fi');
       } catch (emailErr) {
         console.error('Email failed (non-critical):', emailErr);
       }
