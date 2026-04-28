@@ -255,7 +255,7 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
             html: `
               <div style="font-family: serif; color: #2C2C2A; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #E8E3DC;">
                 <h2 style="font-weight: light; border-bottom: 1px solid #B09B89; padding-bottom: 10px;">Reservation Cancelled</h2>
-                <p>Dear ${guest.name},</p>
+                <p>Dear ${guest?.first_name || guest?.name || 'Guest'},</p>
                 <p>This email confirms that your reservation <strong>${booking.reference_number}</strong> at <strong>${listing.name}</strong> has been cancelled.</p>
                 <div style="background-color: #F7F4EF; padding: 20px; border-left: 4px solid #B09B89; margin: 20px 0; font-style: italic;">
                   "I am so sorry to see your cancellation. I was really looking forward to hosting you in Helsinki! I completely understand that plans change, and I truly hope to have the chance to welcome you to one of my stays another time."
@@ -271,11 +271,12 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
         console.error("Failed to send cancellation email:", emailErr);
       }
       
-      setSuccess(true);
+    setSuccess(true);
       setShowConfirmCancel(false);
       setShowCancelSuccessModal(true);
-      // Refresh data to show cancelled status
-      await fetchBookingData();
+      // Update local booking state directly — do NOT refetch
+      // because fetchBookingData throws on cancelled status
+      setBooking((prev: any) => ({ ...prev, status: 'cancelled', cancelled_at: new Date().toISOString() }));
     } catch (err: any) {
       console.error("Error cancelling booking:", err);
       alert("Cancellation failed: " + err.message);
