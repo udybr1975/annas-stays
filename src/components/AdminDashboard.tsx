@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { LISTINGS as FALLBACK_LISTINGS } from "../constants";
 import { motion, AnimatePresence } from "motion/react";
 import { resolveImageUrl } from "../lib/imageUtils";
-import { Save, LogOut, RefreshCw, Upload, X as CloseIcon, Loader2, Check, Calendar as CalendarIcon, Search, Plus, Trash2, TrendingUp, BookOpen, Lock, Unlock, Edit3, Sparkles, LayoutDashboard, ChevronDown } from "lucide-react";
+import { Save, LogOut, RefreshCw, Upload, X as CloseIcon, Loader2, Check, Calendar as CalendarIcon, Plus, Trash2, TrendingUp, Lock, Unlock, Edit3, Sparkles, Menu } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import ExecutiveView from "./ExecutiveView";
 
@@ -23,7 +23,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<{ id: string, index: number } | null>(null);
   const [saveAllStatus, setSaveAllStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [activeTab, setActiveTab] = useState<"listings" | "pricing" | "reservations" | "knowledge">("listings");
+  const [activeTab, setActiveTab] = useState<"listings" | "pricing" | "reservations" | "knowledge">("reservations");
   const [knowledgeBase, setKnowledgeBase] = useState<any[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [bulkImportText, setBulkImportText] = useState("");
@@ -57,6 +57,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     is_instant_book: true
   });
   const [isAdding, setIsAdding] = useState(false);
+
+  // ── Mobile burger menu state ───────────────────────────────────────────────
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -99,11 +102,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
     setAuthLoading(true);
     setMessage("");
-    
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-    });
-
+    const { error } = await supabase.auth.signInWithOtp({ email });
     if (error) {
       showToast(error.message, "error");
     } else {
@@ -115,19 +114,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
   const verifyOtp = async () => {
     setAuthLoading(true);
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'signup',
-    });
-
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'signup' });
     if (error) {
-      const { data: data2, error: error2 } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: 'magiclink',
-      });
-      
+      const { data: data2, error: error2 } = await supabase.auth.verifyOtp({ email, token: otp, type: 'magiclink' });
       if (error2) {
         showToast(error2.message, "error");
       } else if (data2.user) {
@@ -200,25 +189,16 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     if (user) {
       const channel = supabase
         .channel('bookings_changes')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'bookings' },
-          () => {
-            fetchBookings();
-          }
-        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+          fetchBookings();
+        })
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      return () => { supabase.removeChannel(channel); };
     }
   }, [user]);
 
-  // ─── THIS IS THE ONLY CHANGED FUNCTION ───────────────────────────────────────
   const updateBookingStatus = async (id: string, status: string) => {
     if (status === 'confirmed') {
-      // Approve: call approve-booking which creates payment link and emails guest
       showToast("Approving and sending payment link...", "info");
       try {
         const response = await fetch('/api/approve-booking', {
@@ -237,7 +217,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
     } else if (status === 'resend_payment_link') {
-      // Resend: call approve-booking again which creates a fresh payment link
       showToast("Sending a new payment link...", "info");
       try {
         const response = await fetch('/api/approve-booking', {
@@ -256,7 +235,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
     } else {
-      // Decline: update Supabase directly
       showToast("Declining reservation request...", "info");
       const { error } = await supabase
         .from("bookings")
@@ -270,7 +248,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       }
     }
   };
-  // ─────────────────────────────────────────────────────────────────────────────
 
   const deleteBooking = async (id: string) => {
     showToast("Cancelling reservation...", "info");
@@ -278,47 +255,31 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       .from("bookings")
       .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
       .eq("id", id);
-      
     if (error) {
       showToast("Error cancelling booking: " + error.message, "error");
     } else {
       showToast("Reservation cancelled", "success");
-      
       const b = bookings.find(x => x.id === id);
       if (b) {
         const guestData = b.guests;
         const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-        const guestName = guest?.name || `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "A guest";
+        const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "A guest";
         const aptName = apartments.find(a => String(a.id) === String(b.apartment_id))?.name || "one of the apartments";
-        const ntfyMessage = `${guestName} has cancelled their stay at ${aptName} for the dates ${b.check_in} to ${b.check_out} (${b.guest_count} guests).`;
-
         fetch("https://ntfy.sh/annas-stays-helsinki-99", {
           method: "POST",
-          body: ntfyMessage,
-          headers: {
-            "Title": "Stay Cancelled",
-            "X-Priority": "4",
-            "X-Tags": "wastebasket,warning",
-            "Click": "https://ais-dev-rnwdx67jyuj5ixxi5uwbj4-728456909831.europe-west2.run.app"
-          }
-        }).catch(err => console.error("Ntfy Cancellation Notification Error:", err));
+          body: `${guestName} has cancelled their stay at ${aptName} for the dates ${b.check_in} to ${b.check_out} (${b.guest_count} guests).`,
+          headers: { "Title": "Stay Cancelled", "X-Priority": "4", "X-Tags": "wastebasket,warning", "Content-Type": "text/plain" }
+        }).catch(err => console.error("Ntfy error:", err));
       }
-
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', cancelled_at: new Date().toISOString() } : b));
     }
   };
 
   const fetchSpecialPrices = async () => {
     if (!selectedApartmentId) return;
-    const { data, error } = await supabase
-      .from("apartment_prices")
-      .select("*")
-      .eq("apartment_id", selectedApartmentId);
+    const { data, error } = await supabase.from("apartment_prices").select("*").eq("apartment_id", selectedApartmentId);
     if (error) {
       console.error("Error fetching special prices:", error);
-      if (error.message.includes("JWT") || error.message.includes("permission")) {
-        setError("Please Login to Edit (Session Expired or Permission Denied)");
-      }
     } else {
       setSpecialPrices(data || []);
     }
@@ -343,28 +304,17 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       .select("*")
       .eq("apartment_id", selectedApartmentId)
       .order("created_at", { ascending: false });
-    
-    if (error) {
-      console.error("Error fetching knowledge base:", error);
-    } else {
-      setKnowledgeBase(data || []);
-    }
+    if (error) { console.error("Error fetching knowledge base:", error); }
+    else { setKnowledgeBase(data || []); }
     setKnowledgeLoading(false);
   };
 
   const handleSaveKnowledge = async () => {
     if (!user) return showToast("Please login first.", "error");
-    if (!selectedApartmentId) return showToast("Error: Please select an apartment first.", "error");
+    if (!selectedApartmentId) return showToast("Please select an apartment first.", "error");
     if (!knowledgeForm.category || !knowledgeForm.content) return showToast("Please fill in all fields.", "error");
-
     setKnowledgeLoading(true);
-    const payload = {
-      apartment_id: selectedApartmentId,
-      category: knowledgeForm.category.trim(),
-      content: knowledgeForm.content.trim(),
-      is_private: knowledgeForm.is_private
-    };
-
+    const payload = { apartment_id: selectedApartmentId, category: knowledgeForm.category.trim(), content: knowledgeForm.content.trim(), is_private: knowledgeForm.is_private };
     try {
       let error;
       if (editingKnowledgeId) {
@@ -374,18 +324,14 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         const { error: e } = await supabase.from("apartment_details").insert(payload);
         error = e;
       }
-
-      if (error) {
-        console.error("Supabase Save Error:", error);
-        showToast("Error saving knowledge: " + error.message, "error");
-      } else {
+      if (error) { showToast("Error saving knowledge: " + error.message, "error"); }
+      else {
         showToast("Knowledge item saved", "success");
         setKnowledgeForm({ category: "", content: "", is_private: false });
         setEditingKnowledgeId(null);
         await fetchKnowledgeBase();
       }
     } catch (err: any) {
-      console.error("Unexpected Save Error:", err);
       showToast("An unexpected error occurred: " + err.message, "error");
     } finally {
       setKnowledgeLoading(false);
@@ -393,28 +339,18 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   };
 
   const deleteKnowledge = async (id: string) => {
-    console.log('DELETE INITIATED for ID:', id);
-    if (!id) {
-      showToast("DELETE ERROR: Missing Item ID", "error");
-      return;
-    }
-    
+    if (!id) { showToast("DELETE ERROR: Missing Item ID", "error"); return; }
     showToast("Deleting...", "info");
     setKnowledgeLoading(true);
     try {
       const { error } = await supabase.from("apartment_details").delete().eq("id", id);
-      
-      if (error) {
-        console.error("Supabase Delete Error:", error);
-        showToast(`DELETE ERROR: ${error.message}`, "error");
-      } else {
-        console.log('DELETE SUCCESS for ID:', id);
+      if (error) { showToast(`DELETE ERROR: ${error.message}`, "error"); }
+      else {
         showToast("Deleted!", "success");
         setKnowledgeBase(prev => prev.filter(item => item.id !== id));
         await fetchKnowledgeBase();
       }
     } catch (err: any) {
-      console.error("Unexpected Delete Error:", err);
       showToast(`DELETE ERROR: ${err.message}`, "error");
     } finally {
       setKnowledgeLoading(false);
@@ -422,53 +358,35 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   };
 
   const handleBulkImport = async () => {
-    if (!selectedApartmentId) return showToast("Error: Please select an apartment first.", "error");
+    if (!selectedApartmentId) return showToast("Please select an apartment first.", "error");
     if (!bulkImportText.trim()) return;
-    
     setIsBulkImporting(true);
     setKnowledgeLoading(true);
     showToast("Processing with AI...", "info");
-    
     try {
       const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `I have a list of apartment rules/info. Please split them into a JSON array of objects with 'category', 'content', and 'is_private' (boolean). 
-        Rules for is_private: True if it contains sensitive info like WiFi passwords, door codes, or exact check-in steps. False for general features, neighborhood info, or public amenities.
-        
-        TEXT TO PROCESS:
-        ${bulkImportText}`,
-        config: {
-          responseMimeType: "application/json"
-        }
+        contents: `Split these apartment rules into a JSON array with 'category', 'content', 'is_private' (boolean). is_private=true for WiFi passwords, door codes, or sensitive info.\n\n${bulkImportText}`,
+        config: { responseMimeType: "application/json" }
       });
-
       const suggestions = JSON.parse(response.text || "[]");
       if (Array.isArray(suggestions)) {
         const keywords = ['password', 'code', 'key', 'entrance'];
-        const processedSuggestions = suggestions.map(s => {
-          const contentLower = (s.content || "").toLowerCase();
-          const shouldBePrivate = keywords.some(kw => contentLower.includes(kw)) || s.is_private;
-          return {
-            ...s,
-            is_private: shouldBePrivate,
-            apartment_id: selectedApartmentId
-          };
-        });
-
-        const { error } = await supabase.from("apartment_details").insert(processedSuggestions);
-        
-        if (error) {
-          console.error("Supabase Bulk Import Error:", error);
-          showToast("Bulk import failed: " + error.message, "error");
-        } else {
-          showToast(`Successfully imported ${processedSuggestions.length} items.`, "success");
+        const processed = suggestions.map(s => ({
+          ...s,
+          is_private: keywords.some(kw => (s.content || "").toLowerCase().includes(kw)) || s.is_private,
+          apartment_id: selectedApartmentId
+        }));
+        const { error } = await supabase.from("apartment_details").insert(processed);
+        if (error) { showToast("Bulk import failed: " + error.message, "error"); }
+        else {
+          showToast(`Imported ${processed.length} items.`, "success");
           setBulkImportText("");
           await fetchKnowledgeBase();
         }
       }
     } catch (err: any) {
-      console.error("Unexpected Bulk Import Error:", err);
       showToast("Bulk import failed: " + err.message, "error");
     } finally {
       setIsBulkImporting(false);
@@ -483,16 +401,10 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: "Find major events in Helsinki 2026. Prioritize: Lux Helsinki (Jan 6-11), Vappu (Apr 30-May 1), Midsummer (Jun 19-20), Tuska Festival (Jun 26-28), Helsinki Cup (Jul 6-11), Flow Festival (Aug 14-16), Helsinki Design Week (Aug 28-Sep 6), Slush (Nov 18-19). Return a JSON array of objects with 'name', 'start', 'end'.",
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
-        }
+        config: { tools: [{ googleSearch: {} }], responseMimeType: "application/json" }
       });
-      
-      const events = JSON.parse(response.text || "[]");
-      setAiEvents(events);
+      setAiEvents(JSON.parse(response.text || "[]"));
     } catch (err) {
-      console.error("AI Event Search failed:", err);
       setAiEvents([
         { name: "Lux Helsinki", start: "2026-01-06", end: "2026-01-11" },
         { name: "Vappu", start: "2026-04-30", end: "2026-05-01" },
@@ -507,219 +419,104 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     setSearchingEvents(false);
   };
 
-  const setSpecialPrice = async (eventName: string, startDate: string, endDate: string, price: number) => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
-    if (!selectedApartmentId) return;
-    
-    const { error } = await supabase.from("apartment_prices").insert({
-      apartment_id: selectedApartmentId,
-      event_name: eventName,
-      start_date: startDate,
-      end_date: endDate,
-      price_override: Number(price)
-    });
-
-    if (error) {
-      showToast("Error setting special price: " + error.message, "error");
-    } else {
-      showToast("Special price set", "success");
-      fetchSpecialPrices();
-    }
-  };
-
   const handleSaveSeason = async (type: 'high' | 'shoulder' | 'low') => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
     if (!selectedApartmentId) return;
     const season = seasonForm[type];
     if (!season.start || !season.end || !season.weekday || !season.weekend) {
-      showToast("Please fill in all fields for the " + type + " season.", "error");
-      return;
+      showToast("Please fill in all fields for the " + type + " season.", "error"); return;
     }
-
     const { error } = await supabase.from("apartment_prices").insert({
       apartment_id: selectedApartmentId,
       event_name: type.charAt(0).toUpperCase() + type.slice(1) + " Season",
-      start_date: season.start,
-      end_date: season.end,
+      start_date: season.start, end_date: season.end,
       price_override: Number(season.weekday),
       weekend_price_override: Number(season.weekend),
       pricing_type: 'season'
     });
-
-    if (error) {
-      showToast("Error saving season: " + error.message, "error");
-    } else {
+    if (error) { showToast("Error saving season: " + error.message, "error"); }
+    else {
       showToast(type.charAt(0).toUpperCase() + type.slice(1) + " season saved", "success");
       fetchSpecialPrices();
-      setSeasonForm(prev => ({
-        ...prev,
-        [type]: { start: "", end: "", weekday: "", weekend: "" }
-      }));
+      setSeasonForm(prev => ({ ...prev, [type]: { start: "", end: "", weekday: "", weekend: "" } }));
     }
   };
 
   const getPriceForDate = (dateStr: string) => {
     const apt = apartments.find(a => a.id === selectedApartmentId);
     if (!apt) return { price: 0, type: "N/A" };
-
-    const date = new Date(dateStr);
-    date.setHours(0, 0, 0, 0);
-
+    const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
     const special = specialPrices.find(p => {
       if (p.pricing_type === 'season') return false;
-      const start = new Date(p.start_date || p.date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(p.end_date || p.date);
-      end.setHours(0, 0, 0, 0);
+      const start = new Date(p.start_date || p.date); start.setHours(0, 0, 0, 0);
+      const end = new Date(p.end_date || p.date); end.setHours(0, 0, 0, 0);
       return date >= start && date <= end;
     });
-
-    if (special) return { 
-      price: special.price_override || special.price, 
-      type: "Event: " + (special.event_name || "Special Pricing") 
-    };
-
+    if (special) return { price: special.price_override || special.price, type: "Event: " + (special.event_name || "Special Pricing") };
     const season = specialPrices.find(p => {
       if (p.pricing_type !== 'season') return false;
-      const start = new Date(p.start_date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(p.end_date);
-      end.setHours(0, 0, 0, 0);
+      const start = new Date(p.start_date); start.setHours(0, 0, 0, 0);
+      const end = new Date(p.end_date); end.setHours(0, 0, 0, 0);
       return date >= start && date <= end;
     });
-
     if (season) {
-      const day = date.getDay();
-      const isWeekend = day === 5 || day === 6;
-      return {
-        price: isWeekend ? (season.weekend_price_override || season.price_override) : season.price_override,
-        type: season.event_name + (isWeekend ? " (Weekend)" : " (Weekday)")
-      };
+      const day = date.getDay(); const isWeekend = day === 5 || day === 6;
+      return { price: isWeekend ? (season.weekend_price_override || season.price_override) : season.price_override, type: season.event_name + (isWeekend ? " (Weekend)" : " (Weekday)") };
     }
-
     return { price: apt.price_per_night || apt.price || 0, type: "Base Rate" };
   };
 
   const handleSetEventPrice = async (event: any, price: string) => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
-    if (!price || isNaN(Number(price))) {
-      showToast("Please enter a valid price", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
+    if (!price || isNaN(Number(price))) { showToast("Please enter a valid price", "error"); return; }
     if (!selectedApartmentId) return;
-    console.log('Saving price for:', event.name, price);
     const { error } = await supabase.from('apartment_prices').insert({
-      apartment_id: selectedApartmentId,
-      event_name: event.name,
-      start_date: event.start,
-      end_date: event.end,
-      price_override: Number(price)
+      apartment_id: selectedApartmentId, event_name: event.name,
+      start_date: event.start, end_date: event.end, price_override: Number(price)
     });
-    if (error) {
-      showToast("Error: " + error.message, "error");
-    } else {
+    if (error) { showToast("Error: " + error.message, "error"); }
+    else {
       showToast("Event price set", "success");
-      setEventPrices(prev => {
-        const next = { ...prev };
-        delete next[event.name];
-        return next;
-      });
+      setEventPrices(prev => { const next = { ...prev }; delete next[event.name]; return next; });
       fetchSpecialPrices();
     }
   };
 
   const saveWeekendPrice = async () => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
     if (!selectedApartmentId) return;
     const l = apartments.find(apt => apt.id === selectedApartmentId);
     if (!l) return;
-    
     const myValue = tempPrices[`${l.id}-weekend`] ?? l.weekend_pricing_value;
-    
-    console.log('Attempting to save:', myValue);
-    
-    const { error } = await supabase
-      .from('apartments')
-      .update({ weekend_pricing_value: Number(myValue) })
-      .eq('id', selectedApartmentId);
-      
-    if (error) {
-      showToast("Error saving: " + error.message, "error");
-    } else {
+    const { error } = await supabase.from('apartments').update({ weekend_pricing_value: Number(myValue) }).eq('id', selectedApartmentId);
+    if (error) { showToast("Error saving: " + error.message, "error"); }
+    else {
       showToast('Save Successful!', "success");
       setApartments(prev => prev.map(item => item.id === selectedApartmentId ? { ...item, weekend_pricing_value: Number(myValue) } : item));
     }
   };
 
   const deleteSpecialPrice = async (id: number) => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
     const { error } = await supabase.from("apartment_prices").delete().eq("id", id);
-    if (error) {
-      showToast("Error deleting price: " + error.message, "error");
-    } else {
-      showToast("Price rule deleted", "success");
-      fetchSpecialPrices();
-    }
+    if (error) { showToast("Error deleting price: " + error.message, "error"); }
+    else { showToast("Price rule deleted", "success"); fetchSpecialPrices(); }
   };
 
   const seedData = async () => {
     setLoading(true);
-    console.log("Starting initialization...");
-    
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    console.log("Current session:", session);
-    
-    if (sessionError || !session) {
-      const msg = "Auth session error: Please ensure you are logged in correctly.";
-      console.error("Session Error:", sessionError);
-      showToast(msg, "error");
-      setLoading(false);
-      return;
-    }
-
+    if (sessionError || !session) { showToast("Auth session error: Please ensure you are logged in correctly.", "error"); setLoading(false); return; }
     const { error } = await supabase.from("apartments").upsert(
       FALLBACK_LISTINGS.map(l => ({
-        id: l.id,
-        name: l.name,
-        description: l.desc,
-        price_per_night: l.price,
-        neighborhood: l.neigh,
-        size: l.size,
-        guests: l.guests,
-        min: l.min,
-        tags: l.tags,
-        cleaning_fee: l.cleaningFee,
-        images: l.imgs || [],
-        rating: l.rating,
-        weekend_pricing_enabled: false,
-        weekend_pricing_type: 'percentage',
-        weekend_pricing_value: 0
+        id: l.id, name: l.name, description: l.desc, price_per_night: l.price,
+        neighborhood: l.neigh, size: l.size, guests: l.guests, min: l.min,
+        tags: l.tags, cleaning_fee: l.cleaningFee, images: l.imgs || [],
+        rating: l.rating, weekend_pricing_enabled: false, weekend_pricing_type: 'percentage', weekend_pricing_value: 0
       }))
     );
-
-    if (error) {
-      console.error("Supabase Error during initialization:", error);
-      showToast("Error initializing listings: " + error.message, "error");
-    } else {
-      console.log("Initialization successful!");
-      showToast("Listings initialized successfully!", "success");
-      fetchApartments();
-    }
+    if (error) { showToast("Error initializing listings: " + error.message, "error"); }
+    else { showToast("Listings initialized successfully!", "success"); fetchApartments(); }
     setLoading(false);
   };
 
@@ -730,87 +527,41 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     if (updates.price_per_night) uiUpdates.price = updates.price_per_night;
     if (updates.cleaning_fee) uiUpdates.cleaningFee = updates.cleaning_fee;
     if (updates.description) uiUpdates.desc = updates.description;
-
     setApartments(prev => prev.map(l => l.id === id ? { ...l, ...uiUpdates } : l));
   };
 
   const saveField = async (id: string, field: string, value: any) => {
     let finalValue = value;
-    
-    if (field === 'min') {
-      const num = parseInt(String(value).replace(/\D/g, ''));
-      finalValue = isNaN(num) || num < 1 ? 1 : num;
-    }
-
-    if (field === 'price_per_night' || field === 'cleaning_fee' || field === 'weekend_pricing_value' || field === 'rating') {
-      finalValue = Number(value) || 0;
-    }
-
-    if (field === 'weekend_pricing_enabled' || field === 'is_instant_book') {
-      finalValue = Boolean(value);
-    }
-
+    if (field === 'min') { const num = parseInt(String(value).replace(/\D/g, '')); finalValue = isNaN(num) || num < 1 ? 1 : num; }
+    if (['price_per_night', 'cleaning_fee', 'weekend_pricing_value', 'rating'].includes(field)) finalValue = Number(value) || 0;
+    if (['weekend_pricing_enabled', 'is_instant_book'].includes(field)) finalValue = Boolean(value);
     updateListing(id, { [field]: finalValue });
-
-    let updates: any = { [field]: finalValue };
-
-    const { error } = await supabase.from('apartments').update(updates).eq('id', id);
-    
-    if (error) {
-      console.error(`Error saving ${field}:`, error);
-    } else {
+    const { error } = await supabase.from('apartments').update({ [field]: finalValue }).eq('id', id);
+    if (!error) {
       const key = `${id}-${field}`;
       setSavedFields(prev => ({ ...prev, [key]: true }));
-      setTimeout(() => {
-        setSavedFields(prev => ({ ...prev, [key]: false }));
-      }, 2000);
+      setTimeout(() => setSavedFields(prev => ({ ...prev, [key]: false })), 2000);
     }
   };
 
   const handleFileUpload = async (id: string, files: FileList | null) => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
     if (!files || files.length === 0) return;
-    
     const listing = apartments.find(l => l.id === id);
     const currentImages = listing?.images || listing?.imgs || [];
-    
-    if (currentImages.length + files.length > 10) {
-      showToast("Maximum 10 images allowed per listing.", "error");
-      return;
-    }
-
+    if (currentImages.length + files.length > 10) { showToast("Maximum 10 images allowed per listing.", "error"); return; }
     setUploading(id);
     showToast("Uploading images...", "info");
     const newImageUrls = [...(currentImages || [])];
-
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const fileExt = file.name.split('.').pop();
       const fileName = `${id}-${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('apartment-images')
-        .upload(filePath, file, {
-          contentType: file.type,
-          upsert: true
-        });
-
-      if (uploadError) {
-        showToast("Error uploading image: " + uploadError.message, "error");
-        continue;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('apartment-images')
-        .getPublicUrl(filePath);
-
+      const { error: uploadError } = await supabase.storage.from('apartment-images').upload(fileName, file, { contentType: file.type, upsert: true });
+      if (uploadError) { showToast("Error uploading image: " + uploadError.message, "error"); continue; }
+      const { data: { publicUrl } } = supabase.storage.from('apartment-images').getPublicUrl(fileName);
       newImageUrls.push(`${publicUrl}?t=${Date.now()}`);
     }
-
     await updateListing(id, { images: newImageUrls });
     setUploading(null);
   };
@@ -820,7 +571,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     const listing = apartments.find(l => l.id === id);
     const currentImages = [...(listing?.images || listing?.imgs || [])];
     currentImages.splice(index, 1);
-    
     updateListing(id, { images: currentImages });
     setDeleting(null);
   };
@@ -834,34 +584,19 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const handleAddListing = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return showToast("Please login first.", "error");
-    if (!newListing.name || !newListing.neighborhood || !newListing.price_per_night) {
-      return showToast("Please fill in all required fields.", "error");
-    }
-
+    if (!newListing.name || !newListing.neighborhood || !newListing.price_per_night) return showToast("Please fill in all required fields.", "error");
     setIsAdding(true);
     try {
       const id = crypto.randomUUID();
-      const payload = {
-        id,
-        name: newListing.name.trim(),
-        description: newListing.description.trim(),
-        neighborhood: newListing.neighborhood.trim(),
-        price_per_night: Number(newListing.price_per_night),
+      const { error } = await supabase.from("apartments").insert({
+        id, name: newListing.name.trim(), description: newListing.description.trim(),
+        neighborhood: newListing.neighborhood.trim(), price_per_night: Number(newListing.price_per_night),
         images: newListing.image_url ? [newListing.image_url] : [],
-        guests: 2,
-        min: 1,
-        cleaning_fee: 0,
-        rating: 5.0,
-        size: "30m²",
-        tags: ["New Listing"],
-        is_instant_book: newListing.is_instant_book
-      };
-
-      const { error } = await supabase.from("apartments").insert(payload);
-
-      if (error) {
-        showToast("Error adding listing: " + error.message, "error");
-      } else {
+        guests: 2, min: 1, cleaning_fee: 0, rating: 5.0, size: "30m²",
+        tags: ["New Listing"], is_instant_book: newListing.is_instant_book
+      });
+      if (error) { showToast("Error adding listing: " + error.message, "error"); }
+      else {
         showToast("Listing added successfully!", "success");
         setShowAddModal(false);
         setNewListing({ name: "", description: "", neighborhood: "", price_per_night: "", image_url: "", is_instant_book: true });
@@ -877,71 +612,34 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const handleNewListingImageUpload = async (file: File) => {
     if (!user) return;
     showToast("Uploading image...", "info");
-    
     const fileExt = file.name.split('.').pop();
     const fileName = `new-${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
-    const filePath = `${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('apartment-images')
-      .upload(filePath, file, {
-        contentType: file.type,
-        upsert: true
-      });
-
-    if (uploadError) {
-      showToast("Error uploading image: " + uploadError.message, "error");
-      return;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('apartment-images')
-      .getPublicUrl(filePath);
-
+    const { error: uploadError } = await supabase.storage.from('apartment-images').upload(fileName, file, { contentType: file.type, upsert: true });
+    if (uploadError) { showToast("Error uploading image: " + uploadError.message, "error"); return; }
+    const { data: { publicUrl } } = supabase.storage.from('apartment-images').getPublicUrl(fileName);
     setNewListing(prev => ({ ...prev, image_url: publicUrl }));
     showToast("Image uploaded!", "success");
   };
 
   const saveAllChanges = async () => {
-    if (!user) {
-      showToast("Please Login to Edit (Not Authenticated)", "error");
-      return;
-    }
+    if (!user) { showToast("Please Login to Edit (Not Authenticated)", "error"); return; }
     setSaveAllStatus("saving");
     showToast("Saving all changes...", "info");
-    
     const dataToSave = apartments.map(l => ({
-      id: l.id,
-      name: l.name,
-      description: l.description || l.desc,
+      id: l.id, name: l.name, description: l.description || l.desc,
       price_per_night: Number(l.price_per_night || l.price) || 0,
-      neighborhood: l.neighborhood || l.neigh,
-      size: l.size,
-      guests: l.guests,
-      min: Math.round(Number(l.min)) || 1,
-      tags: l.tags,
+      neighborhood: l.neighborhood || l.neigh, size: l.size, guests: l.guests,
+      min: Math.round(Number(l.min)) || 1, tags: l.tags,
       cleaning_fee: Number(l.cleaning_fee || l.cleaningFee) || 0,
-      images: (l.images || l.imgs || []).map((url: string) => {
-        if (url.includes("?t=")) return url;
-        return `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-      }),
+      images: (l.images || l.imgs || []).map((url: string) => url.includes("?t=") ? url : `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`),
       rating: Number(l.rating) || 0,
       weekend_pricing_enabled: Boolean(l.weekend_pricing_enabled),
       weekend_pricing_type: l.weekend_pricing_type || 'percentage',
       weekend_pricing_value: Number(l.weekend_pricing_value) || 0
     }));
-
     const { error } = await supabase.from("apartments").upsert(dataToSave);
-
-    dataToSave.forEach(updatedApartment => {
-      console.log('Sending to Supabase:', updatedApartment);
-    });
-
-    if (error) {
-      console.error("Error during bulk save:", error);
-      showToast("Error saving all changes: " + error.message, "error");
-      setSaveAllStatus("idle");
-    } else {
+    if (error) { showToast("Error saving all changes: " + error.message, "error"); setSaveAllStatus("idle"); }
+    else {
       showToast("All changes saved!", "success");
       setSaveAllStatus("saved");
       await fetchApartments();
@@ -949,6 +647,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
+  // ── Loading / auth screens ─────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="fixed inset-0 bg-warm-white z-[2000] flex items-center justify-center">
@@ -968,19 +667,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           <div className="flex flex-col gap-4">
             {!showOtpInput ? (
               <>
-                <input
-                  type="email"
-                  placeholder="Admin Email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="bg-cream border border-mist p-3 font-sans text-sm outline-none"
-                />
+                <input type="email" placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)} className="bg-cream border border-mist p-3 font-sans text-sm outline-none" />
                 {message && <p className="text-forest text-[0.7rem] font-medium text-center">{message}</p>}
-                <button
-                  onClick={login}
-                  disabled={authLoading}
-                  className="bg-forest text-white p-3 font-sans text-xs tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors disabled:opacity-50"
-                >
+                <button onClick={login} disabled={authLoading} className="bg-forest text-white p-3 font-sans text-xs tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors disabled:opacity-50">
                   {authLoading ? "Sending code..." : "Send OTP Code"}
                 </button>
               </>
@@ -990,37 +679,17 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   <p className="text-muted text-[0.7rem] uppercase tracking-widest mb-1">Enter 6-digit code</p>
                   <p className="text-charcoal text-xs font-medium">{email}</p>
                 </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="000000"
-                  maxLength={6}
-                  value={otp}
-                  onChange={e => {
-                    const val = e.target.value.replace(/\D/g, "");
-                    setOtp(val);
-                  }}
-                  className="bg-cream border border-mist p-3 font-sans text-center text-lg tracking-[0.5em] outline-none"
-                />
+                <input type="text" inputMode="numeric" placeholder="000000" maxLength={6} value={otp}
+                  onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                  className="bg-cream border border-mist p-3 font-sans text-center text-lg tracking-[0.5em] outline-none" />
                 {message && <p className="text-forest text-[0.7rem] font-medium text-center">{message}</p>}
-                <button
-                  onClick={verifyOtp}
-                  disabled={authLoading || otp.length !== 6}
-                  className="bg-forest text-white p-3 font-sans text-xs tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors disabled:opacity-50"
-                >
+                <button onClick={verifyOtp} disabled={authLoading || otp.length !== 6} className="bg-forest text-white p-3 font-sans text-xs tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors disabled:opacity-50">
                   {authLoading ? "Verifying..." : "Verify Code"}
                 </button>
-                <button 
-                  onClick={() => setShowOtpInput(false)}
-                  className="text-muted text-[0.6rem] uppercase tracking-widest hover:text-charcoal transition-colors"
-                >
-                  Change Email
-                </button>
+                <button onClick={() => setShowOtpInput(false)} className="text-muted text-[0.6rem] uppercase tracking-widest hover:text-charcoal transition-colors">Change Email</button>
               </>
             )}
-            <button onClick={onClose} className="text-muted text-[0.7rem] uppercase tracking-widest mt-2 hover:text-charcoal transition-colors">
-              Back to site
-            </button>
+            <button onClick={onClose} className="text-muted text-[0.7rem] uppercase tracking-widest mt-2 hover:text-charcoal transition-colors">Back to site</button>
           </div>
         </div>
       </div>
@@ -1038,135 +707,163 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     );
   }
 
+  const TABS = [
+    { key: "reservations", label: "Bookings & Agenda" },
+    { key: "listings",     label: "Apartments" },
+    { key: "pricing",      label: "Special Pricing" },
+    { key: "knowledge",    label: "Knowledge Base" },
+  ] as const;
+
   return (
     <div className="fixed inset-0 bg-warm-white z-[2000] overflow-y-auto overflow-x-hidden p-3 md:p-12">
+
+      {/* ── Mobile burger menu drawer ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {showMobileMenu && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowMobileMenu(false)}
+              className="fixed inset-0 bg-charcoal/50 z-[3100] md:hidden"
+            />
+            <motion.div
+              initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 220 }}
+              className="fixed top-0 left-0 bottom-0 w-72 bg-white z-[3200] md:hidden flex flex-col shadow-2xl"
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-mist">
+                <h2 className="font-serif text-xl font-light">Menu</h2>
+                <button onClick={() => setShowMobileMenu(false)} className="p-2 text-muted hover:text-charcoal">
+                  <CloseIcon size={20} />
+                </button>
+              </div>
+
+              {/* Nav items */}
+              <div className="flex-1 overflow-y-auto py-4">
+                <p className="px-6 text-[0.55rem] uppercase tracking-widest text-muted font-bold mb-2">Navigate</p>
+                {TABS.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setActiveTab(tab.key); setShowMobileMenu(false); }}
+                    className={`w-full text-left px-6 py-4 text-sm font-sans border-l-4 transition-all ${
+                      activeTab === tab.key
+                        ? "border-charcoal text-charcoal font-bold bg-cream/40"
+                        : "border-transparent text-muted hover:bg-cream/20"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+
+                <div className="mx-6 my-4 border-t border-mist" />
+                <p className="px-6 text-[0.55rem] uppercase tracking-widest text-muted font-bold mb-2">Actions</p>
+
+                <button
+                  onClick={() => { saveAllChanges(); setShowMobileMenu(false); }}
+                  disabled={saveAllStatus !== "idle"}
+                  className="w-full text-left px-6 py-4 text-sm font-sans text-muted hover:bg-cream/20 flex items-center gap-3 disabled:opacity-50"
+                >
+                  <Save size={16} className="text-charcoal" />
+                  {saveAllStatus === "saving" ? "Saving..." : saveAllStatus === "saved" ? "Saved!" : "Save All Changes"}
+                </button>
+
+                <button
+                  onClick={() => { seedData(); setShowMobileMenu(false); }}
+                  className="w-full text-left px-6 py-4 text-sm font-sans text-muted hover:bg-cream/20 flex items-center gap-3"
+                >
+                  <RefreshCw size={16} className="text-charcoal" />
+                  Initialize Listings
+                </button>
+              </div>
+
+              {/* Drawer footer — logout */}
+              <div className="p-6 border-t border-mist">
+                <button
+                  onClick={() => { logout(); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-clay text-white font-sans text-[0.7rem] tracking-widest uppercase hover:bg-clay/90 transition-colors"
+                >
+                  <LogOut size={16} /> Logout
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-[1200px] mx-auto">
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 md:mb-8 border-b border-mist pb-4 md:pb-6 gap-4 md:gap-6">
           <div className="w-full lg:w-auto">
             <div className="flex justify-between items-center mb-2 lg:mb-0">
-              <h1 className="font-serif text-2xl md:text-4xl font-light">Admin Dashboard</h1>
+              <div className="flex items-center gap-3">
+                {/* Burger button — mobile only */}
+                <button
+                  onClick={() => setShowMobileMenu(true)}
+                  className="md:hidden p-2.5 bg-charcoal text-white rounded-sm active:bg-charcoal/80 transition-colors"
+                  aria-label="Open menu"
+                >
+                  <Menu size={20} />
+                </button>
+                <h1 className="font-serif text-2xl md:text-4xl font-light">Admin Dashboard</h1>
+              </div>
               <button onClick={onClose} className="lg:hidden p-2 text-muted hover:text-charcoal">
                 <CloseIcon size={20} />
               </button>
             </div>
+
             {error && (
               <div className="mt-2 p-2 bg-clay/10 border border-clay text-clay text-xs font-medium flex items-center gap-2">
                 <CloseIcon size={14} /> {error}
               </div>
             )}
+
+            {/* Desktop tabs */}
             <div className="hidden md:flex gap-6 mt-6">
-              <button 
-                onClick={() => setActiveTab("listings")}
-                className={`text-[0.7rem] tracking-[0.2em] uppercase font-sans pb-1 border-b-2 transition-all whitespace-nowrap ${activeTab === "listings" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
-              >
-                Apartments
-              </button>
-              <button 
-                onClick={() => setActiveTab("pricing")}
-                className={`text-[0.7rem] tracking-[0.2em] uppercase font-sans pb-1 border-b-2 transition-all whitespace-nowrap ${activeTab === "pricing" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
-              >
-                Special Pricing
-              </button>
-              <button 
-                onClick={() => setActiveTab("reservations")}
-                className={`text-[0.7rem] tracking-[0.2em] uppercase font-sans pb-1 border-b-2 transition-all whitespace-nowrap ${activeTab === "reservations" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
-              >
-                Bookings & Agenda
-              </button>
-              <button 
-                onClick={() => setActiveTab("knowledge")}
-                className={`text-[0.7rem] tracking-[0.2em] uppercase font-sans pb-1 border-b-2 transition-all whitespace-nowrap ${activeTab === "knowledge" ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
-              >
-                Knowledge Base
-              </button>
+              {TABS.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`text-[0.7rem] tracking-[0.2em] uppercase font-sans pb-1 border-b-2 transition-all whitespace-nowrap ${activeTab === tab.key ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <div className="md:hidden mt-4">
-              <select 
-                  value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as any)}
-                  className="w-full bg-white border border-mist p-2.5 font-sans text-xs uppercase tracking-widest outline-none focus:border-clay appearance-none hidden"
-                style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%237A756E\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '0.8rem' }}
-              >
-                <option value="listings">Apartments</option>
-                <option value="pricing">Special Pricing</option>
-                <option value="reservations">Bookings & Agenda</option>
-                <option value="knowledge">Knowledge Base</option>
-              </select>
+            {/* Mobile: show current tab name as breadcrumb */}
+            <div className="md:hidden mt-3">
+              <p className="text-[0.6rem] uppercase tracking-widest text-muted font-bold">
+                {TABS.find(t => t.key === activeTab)?.label}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden md:flex gap-4">
-              <button
-                onClick={saveAllChanges}
-                disabled={saveAllStatus !== "idle"}
-                className={`flex items-center justify-center gap-2 p-2.5 px-6 font-sans text-[0.7rem] tracking-widest uppercase transition-all duration-300 border ${
-                  saveAllStatus === "saved" 
-                    ? "bg-forest text-white border-forest" 
-                    : "bg-charcoal text-white border-charcoal hover:bg-charcoal/90"
-                } disabled:opacity-80`}
-              >
-                {saveAllStatus === "saving" ? (
-                  <><RefreshCw size={14} className="animate-spin" /> Saving</>
-                ) : saveAllStatus === "saved" ? (
-                  <><Check size={14} /> Saved</>
-                ) : (
-                  <><Save size={14} /> Save All</>
-                )}
-              </button>
-              <button
-                onClick={seedData}
-                className="flex items-center justify-center gap-2 bg-cream text-charcoal border border-mist p-2.5 px-4 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-mist transition-colors"
-              >
-                <RefreshCw size={14} /> Init
-              </button>
-              <button
-                onClick={logout}
-                className="flex items-center justify-center gap-2 bg-clay text-white p-2.5 px-4 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-clay/90 transition-colors"
-              >
-                <LogOut size={14} /> Logout
-              </button>
-            </div>
 
-            <div className="md:hidden relative group">
-              <button className="flex items-center justify-center gap-2 bg-charcoal text-white p-2 px-3 font-sans text-[0.6rem] tracking-widest uppercase">
-                Actions <ChevronDown size={14} />
-              </button>
-              <div className="absolute right-0 mt-2 w-40 bg-white border border-mist shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                <button 
-                  onClick={saveAllChanges}
-                  disabled={saveAllStatus !== "idle"}
-                  className="w-full text-left p-3 text-[0.6rem] uppercase tracking-widest hover:bg-cream border-b border-mist flex items-center gap-2"
-                >
-                  <Save size={12} /> {saveAllStatus === "saving" ? "Saving..." : "Save Changes"}
-                </button>
-                <button 
-                  onClick={seedData}
-                  className="w-full text-left p-3 text-[0.6rem] uppercase tracking-widest hover:bg-cream border-b border-mist flex items-center gap-2"
-                >
-                  <RefreshCw size={12} /> Initialize
-                </button>
-                <button 
-                  onClick={logout}
-                  className="w-full text-left p-3 text-[0.6rem] uppercase tracking-widest hover:bg-clay hover:text-white flex items-center gap-2"
-                >
-                  <LogOut size={12} /> Logout
-                </button>
-              </div>
-            </div>
+          {/* Desktop action buttons */}
+          <div className="hidden md:flex items-center gap-4">
+            <button
+              onClick={saveAllChanges}
+              disabled={saveAllStatus !== "idle"}
+              className={`flex items-center justify-center gap-2 p-2.5 px-6 font-sans text-[0.7rem] tracking-widest uppercase transition-all duration-300 border ${saveAllStatus === "saved" ? "bg-forest text-white border-forest" : "bg-charcoal text-white border-charcoal hover:bg-charcoal/90"} disabled:opacity-80`}
+            >
+              {saveAllStatus === "saving" ? <><RefreshCw size={14} className="animate-spin" /> Saving</> : saveAllStatus === "saved" ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save All</>}
+            </button>
+            <button onClick={seedData} className="flex items-center gap-2 bg-cream text-charcoal border border-mist p-2.5 px-4 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-mist transition-colors">
+              <RefreshCw size={14} /> Init
+            </button>
+            <button onClick={logout} className="flex items-center gap-2 bg-clay text-white p-2.5 px-4 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-clay/90 transition-colors">
+              <LogOut size={14} /> Logout
+            </button>
           </div>
         </div>
 
+        {/* ── Tab content ─────────────────────────────────────────────────── */}
         {loading ? (
-          <div className="flex justify-center py-20">
-            <RefreshCw className="animate-spin text-clay" size={40} />
-          </div>
+          <div className="flex justify-center py-20"><RefreshCw className="animate-spin text-clay" size={40} /></div>
+
         ) : activeTab === "listings" ? (
           <div className="grid grid-cols-1 gap-12">
-            <button 
-              onClick={() => setShowAddModal(true)}
-              className="bg-cream/20 border-2 border-dashed border-mist p-12 flex flex-col items-center justify-center gap-4 hover:bg-cream/40 transition-all group"
-            >
+            <button onClick={() => setShowAddModal(true)} className="bg-cream/20 border-2 border-dashed border-mist p-12 flex flex-col items-center justify-center gap-4 hover:bg-cream/40 transition-all group">
               <div className="w-16 h-16 rounded-full bg-mist/30 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Plus size={32} className="text-clay" />
               </div>
@@ -1176,57 +873,25 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               </div>
             </button>
 
-            {(apartments?.length === 0 || (apartments?.length === 3 && !apartments[0].created_at && !apartments[0].neighborhood)) ? (
-              <div className="bg-cream p-12 text-center border border-mist">
-                <h3 className="font-serif text-2xl mb-4">Database is empty</h3>
-                <p className="text-muted mb-8 max-w-[500px] mx-auto">Please initialize the listings in your Supabase table to start managing your apartments and uploading images.</p>
-                <button
-                  onClick={seedData}
-                  className="bg-forest text-white p-4 px-10 font-sans text-xs tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors"
-                >
-                  Initialize Listings Now
-                </button>
-              </div>
-            ) : apartments?.map(l => (
+            {apartments?.map(l => (
               <div key={l.id} className="bg-cream/30 border border-mist p-8 grid grid-cols-1 xl:grid-cols-[1.5fr_2fr] gap-10">
                 <div className="flex flex-col gap-4">
-                  <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Gallery ({ (l.imgs || []).length } / 15)</label>
+                  <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Gallery ({(l.imgs || []).length} / 15)</label>
                   <div className="relative">
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto p-1 border border-mist/30 bg-warm-white/50">
                       {(l.imgs || []).map((img: string, idx: number) => (
                         <div key={idx} className="relative aspect-square group">
                           <img src={resolveImageUrl(img)} alt={`${l.name} ${idx}`} className="w-full h-full object-cover border border-mist" />
-                          <button 
-                            onClick={() => removeImage(l.id, idx)}
-                            disabled={deleting?.id === l.id && deleting?.index === idx}
-                            className="absolute top-1 right-1 bg-charcoal/80 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
-                          >
-                            {deleting?.id === l.id && deleting?.index === idx ? (
-                              <Loader2 size={10} className="animate-spin" />
-                            ) : (
-                              <CloseIcon size={12} />
-                            )}
+                          <button onClick={() => removeImage(l.id, idx)} disabled={deleting?.id === l.id && deleting?.index === idx}
+                            className="absolute top-1 right-1 bg-charcoal/80 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100">
+                            {deleting?.id === l.id && deleting?.index === idx ? <Loader2 size={10} className="animate-spin" /> : <CloseIcon size={12} />}
                           </button>
                         </div>
                       ))}
                       {(l.imgs || []).length < 15 && (
                         <label className="aspect-square border-2 border-dashed border-mist flex flex-col items-center justify-center cursor-pointer hover:bg-mist/20 transition-colors">
-                          {uploading === l.id ? (
-                            <Loader2 className="animate-spin text-clay" size={20} />
-                          ) : (
-                            <>
-                              <Upload size={16} className="text-muted mb-1" />
-                              <span className="text-[0.5rem] uppercase tracking-widest text-muted">Add</span>
-                            </>
-                          )}
-                          <input 
-                            type="file" 
-                            multiple 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={(e) => handleFileUpload(l.id, e.target.files)}
-                            disabled={uploading === l.id}
-                          />
+                          {uploading === l.id ? <Loader2 className="animate-spin text-clay" size={20} /> : <><Upload size={16} className="text-muted mb-1" /><span className="text-[0.5rem] uppercase tracking-widest text-muted">Add</span></>}
+                          <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileUpload(l.id, e.target.files)} disabled={uploading === l.id} />
                         </label>
                       )}
                     </div>
@@ -1241,279 +906,133 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 <div className="flex flex-col gap-6">
                   <div className="bg-cream/50 p-6 border border-mist/50 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp size={16} className="text-clay" />
-                        <h3 className="font-serif text-lg font-light">Weekend Pricing</h3>
-                      </div>
+                      <div className="flex items-center gap-2"><TrendingUp size={16} className="text-clay" /><h3 className="font-serif text-lg font-light">Weekend Pricing</h3></div>
                       <div className="flex items-center gap-4">
                         {l.weekend_pricing_enabled && (
                           <div className="flex items-center gap-4">
                             <div className="flex items-center gap-2">
                               <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Type:</span>
-                              <select
-                                value={l.weekend_pricing_type || 'percentage'}
-                                onChange={e => updateListing(l.id, { weekend_pricing_type: e.target.value })}
-                                className="bg-warm-white border border-mist p-1 font-sans text-xs outline-none focus:border-clay"
-                              >
+                              <select value={l.weekend_pricing_type || 'percentage'} onChange={e => updateListing(l.id, { weekend_pricing_type: e.target.value })} className="bg-warm-white border border-mist p-1 font-sans text-xs outline-none focus:border-clay">
                                 <option value="percentage">Percentage (%)</option>
                                 <option value="fixed">Fixed Amount (€)</option>
                               </select>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Value:</span>
-                              <input 
-                                type="number"
-                                value={tempPrices[`${l.id}-weekend-listings`] ?? (l.weekend_pricing_value || 0)}
+                              <input type="number" value={tempPrices[`${l.id}-weekend-listings`] ?? (l.weekend_pricing_value || 0)}
                                 onChange={e => setTempPrices(prev => ({ ...prev, [`${l.id}-weekend-listings`]: parseFloat(e.target.value) }))}
-                                onBlur={e => {
-                                  updateListing(l.id, { weekend_pricing_value: parseFloat(e.target.value) });
-                                  setTempPrices(prev => {
-                                    const next = { ...prev };
-                                    delete next[`${l.id}-weekend-listings`];
-                                    return next;
-                                  });
-                                }}
-                                className="bg-warm-white border border-mist p-1 px-2 font-sans text-xs outline-none w-20 focus:border-clay"
-                                placeholder="100"
-                              />
+                                onBlur={e => { updateListing(l.id, { weekend_pricing_value: parseFloat(e.target.value) }); setTempPrices(prev => { const next = { ...prev }; delete next[`${l.id}-weekend-listings`]; return next; }); }}
+                                className="bg-warm-white border border-mist p-1 px-2 font-sans text-xs outline-none w-20 focus:border-clay" placeholder="100" />
                             </div>
                           </div>
                         )}
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="sr-only peer" 
-                            checked={l.weekend_pricing_enabled || false}
-                            onChange={e => updateListing(l.id, { weekend_pricing_enabled: e.target.checked })}
-                          />
+                          <input type="checkbox" className="sr-only peer" checked={l.weekend_pricing_enabled || false} onChange={e => updateListing(l.id, { weekend_pricing_enabled: e.target.checked })} />
                           <div className="w-11 h-6 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest"></div>
                         </label>
                       </div>
                     </div>
-
                     <div className="pt-4 border-t border-mist/30 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={16} className="text-clay" />
-                        <h3 className="font-serif text-lg font-light">Instant Booking</h3>
-                      </div>
+                      <div className="flex items-center gap-2"><Sparkles size={16} className="text-clay" /><h3 className="font-serif text-lg font-light">Instant Booking</h3></div>
                       <div className="flex items-center gap-3">
-                        <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">
-                          {l.is_instant_book ? "Enabled" : "Requires Approval"}
-                        </span>
+                        <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">{l.is_instant_book ? "Enabled" : "Requires Approval"}</span>
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="sr-only peer" 
-                            checked={l.is_instant_book ?? true}
-                            onChange={e => saveField(l.id, 'is_instant_book', e.target.checked)}
-                          />
+                          <input type="checkbox" className="sr-only peer" checked={l.is_instant_book ?? true} onChange={e => saveField(l.id, 'is_instant_book', e.target.checked)} />
                           <div className="w-11 h-6 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest"></div>
                         </label>
                       </div>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Apartment Name</label>
-                      <input
-                        defaultValue={l.name}
-                        onBlur={e => updateListing(l.id, { name: e.target.value })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Neighborhood</label>
-                      <input
-                        defaultValue={l.neighborhood || l.neigh}
-                        onBlur={e => updateListing(l.id, { neighborhood: e.target.value })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Price per night (€)</label>
-                      <input
-                        type="number"
-                        defaultValue={l.price_per_night || l.price}
-                        onBlur={e => updateListing(l.id, { price_per_night: parseInt(e.target.value) })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Cleaning Fee (€)</label>
-                      <input
-                        type="number"
-                        defaultValue={l.cleaning_fee || l.cleaningFee}
-                        onBlur={e => updateListing(l.id, { cleaning_fee: parseInt(e.target.value) })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Guests</label>
-                      <input
-                        type="number"
-                        defaultValue={l.guests}
-                        onBlur={e => updateListing(l.id, { guests: parseInt(e.target.value) })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Size (e.g. 25 m²)</label>
-                      <input
-                        defaultValue={l.size}
-                        onBlur={e => updateListing(l.id, { size: e.target.value })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
+                    {[
+                      { label: "Apartment Name", field: "name", defaultVal: l.name },
+                      { label: "Neighborhood", field: "neighborhood", defaultVal: l.neighborhood || l.neigh },
+                      { label: "Price per night (€)", field: "price_per_night", type: "number", defaultVal: l.price_per_night || l.price },
+                      { label: "Cleaning Fee (€)", field: "cleaning_fee", type: "number", defaultVal: l.cleaning_fee || l.cleaningFee },
+                      { label: "Guests", field: "guests", type: "number", defaultVal: l.guests },
+                      { label: "Size (e.g. 25 m²)", field: "size", defaultVal: l.size },
+                      { label: "Rating (e.g. ★ 4.8)", field: "rating", defaultVal: l.rating },
+                      { label: "Tags (comma separated)", field: "tags", defaultVal: l.tags?.join(", ") },
+                    ].map(f => (
+                      <div key={f.field} className="flex flex-col gap-1">
+                        <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">{f.label}</label>
+                        <input type={f.type || "text"} defaultValue={f.defaultVal}
+                          onBlur={e => {
+                            if (f.field === "tags") { updateListing(l.id, { tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean) }); }
+                            else { updateListing(l.id, { [f.field]: e.target.value }); }
+                          }}
+                          className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay" />
+                      </div>
+                    ))}
                     <div className="flex flex-col gap-1">
                       <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans flex items-center justify-between">
-                        Min Stay (Nights)
-                        {savedFields[`${l.id}-min`] && <span className="text-forest text-[0.5rem] animate-pulse">● Saved</span>}
+                        Min Stay (Nights) {savedFields[`${l.id}-min`] && <span className="text-forest text-[0.5rem] animate-pulse">● Saved</span>}
                       </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={l.min || ""}
-                        onChange={e => updateListing(l.id, { min: e.target.value })}
-                        onBlur={e => saveField(l.id, 'min', e.target.value)}
-                        className={`bg-warm-white border p-3 font-sans text-sm outline-none transition-all duration-500 ${savedFields[`${l.id}-min`] ? "border-forest shadow-[0_0_10px_rgba(61,79,62,0.2)]" : "border-mist focus:border-clay"}`}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Rating (e.g. ★ 4.8)</label>
-                      <input
-                        defaultValue={l.rating}
-                        onBlur={e => updateListing(l.id, { rating: e.target.value })}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Tags (comma separated)</label>
-                      <input
-                        defaultValue={l.tags?.join(", ")}
-                        onBlur={e => {
-                          const tags = e.target.value.split(",").map(t => t.trim()).filter(t => t !== "");
-                          updateListing(l.id, { tags });
-                        }}
-                        className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
-                      />
+                      <input type="number" min="1" value={l.min || ""} onChange={e => updateListing(l.id, { min: e.target.value })} onBlur={e => saveField(l.id, 'min', e.target.value)}
+                        className={`bg-warm-white border p-3 font-sans text-sm outline-none transition-all duration-500 ${savedFields[`${l.id}-min`] ? "border-forest shadow-[0_0_10px_rgba(61,79,62,0.2)]" : "border-mist focus:border-clay"}`} />
                     </div>
                   </div>
-
                   <div className="flex flex-col gap-1">
                     <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Description</label>
-                    <textarea
-                      rows={4}
-                      defaultValue={l.description || l.desc}
-                      onBlur={e => updateListing(l.id, { description: e.target.value })}
-                      className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none resize-none focus:border-clay"
-                    />
+                    <textarea rows={4} defaultValue={l.description || l.desc} onBlur={e => updateListing(l.id, { description: e.target.value })}
+                      className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none resize-none focus:border-clay" />
                   </div>
                 </div>
               </div>
             ))}
           </div>
+
         ) : activeTab === "pricing" ? (
           <div className="flex flex-col gap-8">
             <div className="flex flex-col gap-4 bg-cream p-6 border border-mist">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <label className="text-[0.7rem] tracking-widest uppercase text-muted font-sans">Select Apartment:</label>
-                  <select 
-                    value={selectedApartmentId || ""}
-                    onChange={e => setSelectedApartmentId(e.target.value)}
-                    className="bg-warm-white border border-mist p-2 font-sans text-sm outline-none min-w-[200px]"
-                  >
-                    {apartments?.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
+                  <select value={selectedApartmentId || ""} onChange={e => setSelectedApartmentId(e.target.value)} className="bg-warm-white border border-mist p-2 font-sans text-sm outline-none min-w-[200px]">
+                    {apartments?.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
-                <div className="flex items-center gap-2 text-muted">
-                  <CalendarIcon size={16} />
-                  <span className="text-xs uppercase tracking-widest">Helsinki 2026 Season</span>
-                </div>
+                <div className="flex items-center gap-2 text-muted"><CalendarIcon size={16} /><span className="text-xs uppercase tracking-widest">Helsinki 2026 Season</span></div>
               </div>
-
-              {selectedApartmentId && (
-                <div className="pt-4 border-t border-mist/30 flex items-center justify-between">
-                  {(() => {
-                    const l = apartments.find(apt => apt.id === selectedApartmentId);
-                    if (!l) return null;
-                    return (
-                      <>
-                        <div className="flex items-center gap-6">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Base Price</span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-sm font-serif">€</span>
-                              <input 
-                                type="number"
-                                value={tempPrices[`${l.id}-base`] ?? (l.price_per_night || l.price || 0)}
-                                onChange={e => setTempPrices(prev => ({ ...prev, [`${l.id}-base`]: parseInt(e.target.value) }))}
-                                onBlur={e => {
-                                  updateListing(l.id, { price_per_night: parseInt(e.target.value) });
-                                  setTempPrices(prev => {
-                                    const next = { ...prev };
-                                    delete next[`${l.id}-base`];
-                                    return next;
-                                  });
-                                }}
-                                className="bg-transparent border-b border-mist/50 w-16 text-sm outline-none focus:border-clay"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Type</span>
-                            <select
-                              value={l.weekend_pricing_type || 'percentage'}
-                              onChange={e => updateListing(l.id, { weekend_pricing_type: e.target.value })}
-                              className="bg-transparent border-b border-mist/50 text-xs outline-none focus:border-clay"
-                            >
-                              <option value="percentage">%</option>
-                              <option value="fixed">€</option>
-                            </select>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekend Price</span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-sm font-serif">€</span>
-                              <input 
-                                type="number"
-                                value={tempPrices[`${l.id}-weekend`] ?? (l.weekend_pricing_value || 0)}
-                                onChange={e => setTempPrices(prev => ({ ...prev, [`${l.id}-weekend`]: parseFloat(e.target.value) }))}
-                                disabled={!l.weekend_pricing_enabled}
-                                className={`bg-transparent border-b border-mist/50 w-16 text-sm outline-none focus:border-clay ${!l.weekend_pricing_enabled ? 'opacity-30' : ''}`}
-                              />
-                              <button 
-                                onClick={saveWeekendPrice}
-                                disabled={!l.weekend_pricing_enabled}
-                                className="text-[0.6rem] bg-forest text-white px-3 py-1 uppercase tracking-widest hover:bg-forest/90 transition-colors ml-2 disabled:opacity-50"
-                              >
-                                Save
-                              </button>
-                            </div>
-                          </div>
+              {selectedApartmentId && (() => {
+                const l = apartments.find(apt => apt.id === selectedApartmentId);
+                if (!l) return null;
+                return (
+                  <div className="pt-4 border-t border-mist/30 flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Base Price</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-serif">€</span>
+                          <input type="number" value={tempPrices[`${l.id}-base`] ?? (l.price_per_night || l.price || 0)}
+                            onChange={e => setTempPrices(prev => ({ ...prev, [`${l.id}-base`]: parseInt(e.target.value) }))}
+                            onBlur={e => { updateListing(l.id, { price_per_night: parseInt(e.target.value) }); setTempPrices(prev => { const next = { ...prev }; delete next[`${l.id}-base`]; return next; }); }}
+                            className="bg-transparent border-b border-mist/50 w-16 text-sm outline-none focus:border-clay" />
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekend Pricing</span>
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer" 
-                              checked={l.weekend_pricing_enabled || false}
-                              onChange={e => updateListing(l.id, { weekend_pricing_enabled: e.target.checked })}
-                            />
-                            <div className="w-10 h-5 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-forest"></div>
-                          </label>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekend Price</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-serif">€</span>
+                          <input type="number" value={tempPrices[`${l.id}-weekend`] ?? (l.weekend_pricing_value || 0)}
+                            onChange={e => setTempPrices(prev => ({ ...prev, [`${l.id}-weekend`]: parseFloat(e.target.value) }))}
+                            disabled={!l.weekend_pricing_enabled}
+                            className={`bg-transparent border-b border-mist/50 w-16 text-sm outline-none focus:border-clay ${!l.weekend_pricing_enabled ? 'opacity-30' : ''}`} />
+                          <button onClick={saveWeekendPrice} disabled={!l.weekend_pricing_enabled} className="text-[0.6rem] bg-forest text-white px-3 py-1 uppercase tracking-widest hover:bg-forest/90 transition-colors ml-2 disabled:opacity-50">Save</button>
                         </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekend Pricing</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" checked={l.weekend_pricing_enabled || false} onChange={e => updateListing(l.id, { weekend_pricing_enabled: e.target.checked })} />
+                        <div className="w-10 h-5 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-forest"></div>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-10">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between mb-2">
@@ -1522,16 +1041,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 </div>
                 <div className="bg-warm-white border border-mist overflow-hidden">
                   {searchingEvents ? (
-                    <div className="p-12 text-center">
-                      <Loader2 className="animate-spin text-clay mx-auto mb-4" size={32} />
-                      <p className="text-xs uppercase tracking-widest text-muted">Scanning Helsinki 2026...</p>
-                    </div>
+                    <div className="p-12 text-center"><Loader2 className="animate-spin text-clay mx-auto mb-4" size={32} /><p className="text-xs uppercase tracking-widest text-muted">Scanning Helsinki 2026...</p></div>
                   ) : (
                     <div className="divide-y divide-mist">
                       {aiEvents?.map((ev, idx) => {
                         const existing = specialPrices?.find(p => p.event_name === ev.name);
                         const currentPrice = eventPrices[ev.name] || "";
-                        
                         return (
                           <div key={idx} className="p-4 hover:bg-cream/50 transition-colors">
                             <div className="flex justify-between items-center mb-2">
@@ -1540,28 +1055,14 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                                 <p className="text-[0.65rem] text-muted uppercase tracking-widest">{ev.start} — {ev.end}</p>
                               </div>
                               {existing ? (
-                                <div className="bg-forest/10 text-forest text-[0.6rem] px-2 py-1 uppercase tracking-widest font-medium">
-                                  €{existing.price_override || existing.price} Set
-                                </div>
+                                <div className="bg-forest/10 text-forest text-[0.6rem] px-2 py-1 uppercase tracking-widest font-medium">€{existing.price_override || existing.price} Set</div>
                               ) : (
                                 <div className="flex items-center gap-2">
                                   <div className="flex items-center gap-1 bg-warm-white border border-mist px-2 py-1">
                                     <span className="text-[0.6rem] text-muted">€</span>
-                                    <input 
-                                      type="number"
-                                      placeholder="Price"
-                                      value={currentPrice}
-                                      onChange={e => setEventPrices(prev => ({ ...prev, [ev.name]: e.target.value }))}
-                                      className="bg-transparent w-16 text-xs outline-none font-sans"
-                                    />
+                                    <input type="number" placeholder="Price" value={currentPrice} onChange={e => setEventPrices(prev => ({ ...prev, [ev.name]: e.target.value }))} className="bg-transparent w-16 text-xs outline-none font-sans" />
                                   </div>
-                                  <button 
-                                    onClick={() => handleSetEventPrice(ev, currentPrice)}
-                                    className="bg-charcoal text-white p-1.5 hover:bg-charcoal/80 transition-colors"
-                                    title="Save Price"
-                                  >
-                                    <Save size={14} />
-                                  </button>
+                                  <button onClick={() => handleSetEventPrice(ev, currentPrice)} className="bg-charcoal text-white p-1.5 hover:bg-charcoal/80 transition-colors"><Save size={14} /></button>
                                 </div>
                               )}
                             </div>
@@ -1572,57 +1073,30 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   )}
                 </div>
               </div>
-
               <div className="flex flex-col gap-4">
                 <h3 className="font-serif text-xl font-light">Active Special Pricing</h3>
                 <div className="bg-warm-white border border-mist overflow-hidden">
                   {(specialPrices?.length || 0) === 0 ? (
-                    <div className="p-12 text-center text-muted italic text-sm">
-                      No special prices set for this apartment.
-                    </div>
+                    <div className="p-12 text-center text-muted italic text-sm">No special prices set for this apartment.</div>
                   ) : (
                     <div className="max-h-[600px] overflow-y-auto">
                       <table className="w-full text-left border-collapse">
                         <thead className="bg-cream sticky top-0 z-10">
                           <tr>
-                            <th className="p-4 text-[0.6rem] uppercase tracking-widest text-muted border-b border-mist">Dates</th>
-                            <th className="p-4 text-[0.6rem] uppercase tracking-widest text-muted border-b border-mist">Type / Event</th>
-                            <th className="p-4 text-[0.6rem] uppercase tracking-widest text-muted border-b border-mist">Price</th>
-                            <th className="p-4 text-[0.6rem] uppercase tracking-widest text-muted border-b border-mist"></th>
+                            {["Dates", "Type / Event", "Price", ""].map(h => <th key={h} className="p-4 text-[0.6rem] uppercase tracking-widest text-muted border-b border-mist">{h}</th>)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-mist">
                           {specialPrices?.map(p => (
                             <tr key={p.id} className="hover:bg-cream/30 transition-colors">
+                              <td className="p-4 text-sm font-light">{p.start_date === p.end_date ? (p.start_date || p.date) : `${p.start_date || p.date} — ${p.end_date || p.date}`}</td>
                               <td className="p-4 text-sm font-light">
-                                {p.start_date === p.end_date ? (p.start_date || p.date) : `${p.start_date || p.date} — ${p.end_date || p.date}`}
-                              </td>
-                              <td className="p-4 text-sm font-light">
-                                <div className="flex flex-col">
-                                  <span>{p.event_name || "Manual Adjustment"}</span>
-                                  {p.pricing_type === 'season' && (
-                                    <span className="text-[0.6rem] text-muted uppercase tracking-widest">Seasonal Pricing</span>
-                                  )}
-                                </div>
+                                <div className="flex flex-col"><span>{p.event_name || "Manual Adjustment"}</span>{p.pricing_type === 'season' && <span className="text-[0.6rem] text-muted uppercase tracking-widest">Seasonal Pricing</span>}</div>
                               </td>
                               <td className="p-4 text-sm font-medium text-forest">
-                                {p.pricing_type === 'season' ? (
-                                  <div className="flex flex-col">
-                                    <span>€{p.price_override} (Wkdy)</span>
-                                    <span>€{p.weekend_price_override} (Wknd)</span>
-                                  </div>
-                                ) : (
-                                  `€${p.price_override || p.price}`
-                                )}
+                                {p.pricing_type === 'season' ? <div className="flex flex-col"><span>€{p.price_override} (Wkdy)</span><span>€{p.weekend_price_override} (Wknd)</span></div> : `€${p.price_override || p.price}`}
                               </td>
-                              <td className="p-4 text-right">
-                                <button 
-                                  onClick={() => deleteSpecialPrice(p.id)}
-                                  className="text-clay hover:text-clay/80 transition-colors"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
+                              <td className="p-4 text-right"><button onClick={() => deleteSpecialPrice(p.id)} className="text-clay hover:text-clay/80 transition-colors"><Trash2 size={14} /></button></td>
                             </tr>
                           ))}
                         </tbody>
@@ -1630,7 +1104,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     </div>
                   )}
                 </div>
-
                 <div className="mt-8 flex flex-col gap-6">
                   <h3 className="font-serif text-xl font-light">Seasonal Pricing Manager</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1638,86 +1111,41 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                       <div key={season} className="bg-warm-white border border-mist p-5 flex flex-col gap-4">
                         <h4 className="text-[0.7rem] uppercase tracking-widest text-clay font-sans font-bold">{season} Season</h4>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Start</label>
-                            <input 
-                              type="date"
-                              value={seasonForm[season].start}
-                              onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], start: e.target.value } }))}
-                              className="bg-cream border border-mist p-2 text-xs outline-none"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">End</label>
-                            <input 
-                              type="date"
-                              value={seasonForm[season].end}
-                              onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], end: e.target.value } }))}
-                              className="bg-cream border border-mist p-2 text-xs outline-none"
-                            />
-                          </div>
+                          {[['Start', 'start'], ['End', 'end']].map(([label, key]) => (
+                            <div key={key} className="flex flex-col gap-1">
+                              <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">{label}</label>
+                              <input type="date" value={seasonForm[season][key as 'start'|'end']} onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], [key]: e.target.value } }))} className="bg-cream border border-mist p-2 text-xs outline-none" />
+                            </div>
+                          ))}
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekday €</label>
-                            <input 
-                              type="number"
-                              placeholder="Price"
-                              value={seasonForm[season].weekday}
-                              onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], weekday: e.target.value } }))}
-                              className="bg-cream border border-mist p-2 text-xs outline-none"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Weekend €</label>
-                            <input 
-                              type="number"
-                              placeholder="Price"
-                              value={seasonForm[season].weekend}
-                              onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], weekend: e.target.value } }))}
-                              className="bg-cream border border-mist p-2 text-xs outline-none"
-                            />
-                          </div>
+                          {[['Weekday €', 'weekday'], ['Weekend €', 'weekend']].map(([label, key]) => (
+                            <div key={key} className="flex flex-col gap-1">
+                              <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">{label}</label>
+                              <input type="number" placeholder="Price" value={seasonForm[season][key as 'weekday'|'weekend']} onChange={e => setSeasonForm(prev => ({ ...prev, [season]: { ...prev[season], [key]: e.target.value } }))} className="bg-cream border border-mist p-2 text-xs outline-none" />
+                            </div>
+                          ))}
                         </div>
-                        <button 
-                          onClick={() => handleSaveSeason(season)}
-                          className="bg-forest text-white p-2 text-[0.6rem] uppercase tracking-widest hover:bg-forest/90 transition-colors mt-2"
-                        >
-                          Save {season} Season
-                        </button>
+                        <button onClick={() => handleSaveSeason(season)} className="bg-forest text-white p-2 text-[0.6rem] uppercase tracking-widest hover:bg-forest/90 transition-colors mt-2">Save {season} Season</button>
                       </div>
                     ))}
                   </div>
                 </div>
-
                 <div className="mt-8 bg-cream p-6 border border-mist">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-serif text-xl font-light">Admin Price Preview</h3>
                     <div className="flex items-center gap-3">
                       <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Test Date:</label>
-                      <input 
-                        type="date"
-                        value={previewDate}
-                        onChange={e => setPreviewDate(e.target.value)}
-                        className="bg-warm-white border border-mist p-2 text-xs outline-none"
-                      />
+                      <input type="date" value={previewDate} onChange={e => setPreviewDate(e.target.value)} className="bg-warm-white border border-mist p-2 text-xs outline-none" />
                     </div>
                   </div>
                   {(() => {
                     const { price, type } = getPriceForDate(previewDate);
                     return (
                       <div className="flex items-center gap-8">
-                        <div className="flex flex-col">
-                          <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Calculated Price</span>
-                          <span className="font-serif text-3xl text-forest">€{price}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Applied Rule</span>
-                          <span className="text-sm font-medium text-charcoal">{type}</span>
-                        </div>
-                        <div className="ml-auto text-[0.65rem] text-muted italic max-w-[200px]">
-                          This preview uses the priority hierarchy: Events &gt; Seasons &gt; Base Price.
-                        </div>
+                        <div className="flex flex-col"><span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Calculated Price</span><span className="font-serif text-3xl text-forest">€{price}</span></div>
+                        <div className="flex flex-col"><span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Applied Rule</span><span className="text-sm font-medium text-charcoal">{type}</span></div>
+                        <div className="ml-auto text-[0.65rem] text-muted italic max-w-[200px]">This preview uses the priority hierarchy: Events &gt; Seasons &gt; Base Price.</div>
                       </div>
                     );
                   })()}
@@ -1725,6 +1153,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               </div>
             </div>
           </div>
+
         ) : activeTab === "knowledge" ? (
           <div className="flex flex-col gap-8">
             <div className="bg-cream/30 border border-mist p-8">
@@ -1735,16 +1164,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans font-bold">Select Apartment:</label>
-                  <select 
-                    value={selectedApartmentId || ""} 
-                    onChange={e => setSelectedApartmentId(e.target.value)}
-                    className="bg-white border border-mist p-2 px-4 font-sans text-xs outline-none focus:border-clay"
-                  >
+                  <select value={selectedApartmentId || ""} onChange={e => setSelectedApartmentId(e.target.value)} className="bg-white border border-mist p-2 px-4 font-sans text-xs outline-none focus:border-clay">
                     {apartments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8">
                 <div className="bg-white p-6 border border-mist flex flex-col gap-5 h-fit sticky top-6">
                   <h3 className="text-[0.7rem] uppercase tracking-widest text-charcoal font-bold flex items-center gap-2">
@@ -1753,22 +1177,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   </h3>
                   <div className="flex flex-col gap-1">
                     <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Category</label>
-                    <input 
-                      placeholder="e.g. WiFi, Check-in, Parking"
-                      value={knowledgeForm.category}
-                      onChange={e => setKnowledgeForm(p => ({ ...p, category: e.target.value }))}
-                      className="bg-cream/30 border border-mist p-3 text-sm outline-none focus:border-clay"
-                    />
+                    <input placeholder="e.g. WiFi, Check-in, Parking" value={knowledgeForm.category} onChange={e => setKnowledgeForm(p => ({ ...p, category: e.target.value }))} className="bg-cream/30 border border-mist p-3 text-sm outline-none focus:border-clay" />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">Content</label>
-                    <textarea 
-                      rows={4}
-                      placeholder="Enter the instructions or information..."
-                      value={knowledgeForm.content}
-                      onChange={e => setKnowledgeForm(p => ({ ...p, content: e.target.value }))}
-                      className="bg-cream/30 border border-mist p-3 text-sm outline-none focus:border-clay resize-none"
-                    />
+                    <textarea rows={4} placeholder="Enter the instructions or information..." value={knowledgeForm.content} onChange={e => setKnowledgeForm(p => ({ ...p, content: e.target.value }))} className="bg-cream/30 border border-mist p-3 text-sm outline-none focus:border-clay resize-none" />
                   </div>
                   <div className="flex items-center justify-between bg-cream/20 p-3 border border-mist/50">
                     <div className="flex items-center gap-2">
@@ -1776,65 +1189,33 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                       <span className="text-[0.65rem] uppercase tracking-widest font-sans font-bold">Private Info</span>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={knowledgeForm.is_private}
-                        onChange={e => setKnowledgeForm(p => ({ ...p, is_private: e.target.checked }))}
-                      />
+                      <input type="checkbox" className="sr-only peer" checked={knowledgeForm.is_private} onChange={e => setKnowledgeForm(p => ({ ...p, is_private: e.target.checked }))} />
                       <div className="w-10 h-5 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-clay"></div>
                     </label>
                   </div>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={handleSaveKnowledge}
-                      disabled={knowledgeLoading}
-                      className="flex-1 bg-charcoal text-white p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-charcoal/90 transition-colors disabled:opacity-50"
-                    >
+                    <button onClick={handleSaveKnowledge} disabled={knowledgeLoading} className="flex-1 bg-charcoal text-white p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-charcoal/90 transition-colors disabled:opacity-50">
                       {editingKnowledgeId ? "Update Item" : "Save Item"}
                     </button>
                     {editingKnowledgeId && (
-                      <button 
-                        onClick={() => { setEditingKnowledgeId(null); setKnowledgeForm({ category: "", content: "", is_private: false }); }}
-                        className="bg-mist text-charcoal p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-mist/80 transition-colors"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => { setEditingKnowledgeId(null); setKnowledgeForm({ category: "", content: "", is_private: false }); }} className="bg-mist text-charcoal p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-mist/80 transition-colors">Cancel</button>
                     )}
                   </div>
-
                   <div className="mt-6 pt-6 border-t border-mist">
-                    <h3 className="text-[0.7rem] uppercase tracking-widest text-charcoal font-bold flex items-center gap-2 mb-4">
-                      <Sparkles size={14} className="text-clay" /> Bulk Import
-                    </h3>
+                    <h3 className="text-[0.7rem] uppercase tracking-widest text-charcoal font-bold flex items-center gap-2 mb-4"><Sparkles size={14} className="text-clay" /> Bulk Import</h3>
                     <p className="text-[0.6rem] text-muted mb-3 italic">Paste your rules below. AI will categorize them for you.</p>
-                    <textarea 
-                      rows={5}
-                      placeholder="WiFi: Pass123&#10;Check-in: Key is under the mat&#10;Sauna: Available 24/7"
-                      value={bulkImportText}
-                      onChange={e => setBulkImportText(e.target.value)}
-                      className="w-full bg-cream/30 border border-mist p-3 text-[0.7rem] outline-none focus:border-clay mb-3"
-                    />
-                    <button 
-                      onClick={handleBulkImport}
-                      disabled={isBulkImporting || !bulkImportText.trim()}
-                      className="w-full bg-forest text-white p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-forest/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {isBulkImporting ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      AI Bulk Import
+                    <textarea rows={5} placeholder="WiFi: Pass123&#10;Check-in: Key is under the mat&#10;Sauna: Available 24/7" value={bulkImportText} onChange={e => setBulkImportText(e.target.value)} className="w-full bg-cream/30 border border-mist p-3 text-[0.7rem] outline-none focus:border-clay mb-3" />
+                    <button onClick={handleBulkImport} disabled={isBulkImporting || !bulkImportText.trim()} className="w-full bg-forest text-white p-3 text-[0.65rem] uppercase tracking-widest font-bold hover:bg-forest/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                      {isBulkImporting ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />} AI Bulk Import
                     </button>
                   </div>
                 </div>
-
                 <div className="bg-white border border-mist overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-mist/30 border-b border-mist">
-                          <th className="p-4 text-[0.65rem] uppercase tracking-widest text-muted font-bold">Category</th>
-                          <th className="p-4 text-[0.65rem] uppercase tracking-widest text-muted font-bold">Content</th>
-                          <th className="p-4 text-[0.65rem] uppercase tracking-widest text-muted font-bold">Status</th>
-                          <th className="p-4 text-[0.65rem] uppercase tracking-widest text-muted font-bold">Actions</th>
+                          {["Category", "Content", "Status", "Actions"].map(h => <th key={h} className="p-4 text-[0.65rem] uppercase tracking-widest text-muted font-bold">{h}</th>)}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-mist">
@@ -1844,46 +1225,17 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                           <tr><td colSpan={4} className="p-10 text-center text-muted italic">No knowledge base items found for this apartment.</td></tr>
                         ) : knowledgeBase.map(item => (
                           <tr key={item.id} className={`hover:bg-cream/10 transition-colors ${item.is_private ? "bg-clay/5" : ""}`}>
+                            <td className="p-4"><span className="text-[0.7rem] font-bold uppercase tracking-widest text-charcoal">{item.category}</span></td>
+                            <td className="p-4"><p className="text-[0.75rem] text-muted leading-relaxed max-w-md">{item.content}</p></td>
                             <td className="p-4">
-                              <span className="text-[0.7rem] font-bold uppercase tracking-widest text-charcoal">{item.category}</span>
-                            </td>
-                            <td className="p-4">
-                              <p className="text-[0.75rem] text-muted leading-relaxed max-w-md">{item.content}</p>
-                            </td>
-                            <td className="p-4">
-                              {item.is_private ? (
-                                <div className="flex items-center gap-1.5 text-clay text-[0.6rem] font-bold uppercase tracking-widest">
-                                  <Lock size={12} /> Private
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5 text-sage text-[0.6rem] font-bold uppercase tracking-widest">
-                                  <Unlock size={12} /> Public
-                                </div>
-                              )}
+                              {item.is_private
+                                ? <div className="flex items-center gap-1.5 text-clay text-[0.6rem] font-bold uppercase tracking-widest"><Lock size={12} /> Private</div>
+                                : <div className="flex items-center gap-1.5 text-sage text-[0.6rem] font-bold uppercase tracking-widest"><Unlock size={12} /> Public</div>}
                             </td>
                             <td className="p-4">
                               <div className="flex gap-2">
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingKnowledgeId(item.id); 
-                                    setKnowledgeForm({ category: item.category, content: item.content, is_private: item.is_private }); 
-                                  }}
-                                  disabled={knowledgeLoading}
-                                  className="p-2 text-charcoal hover:bg-mist rounded transition-all disabled:opacity-50 relative z-10"
-                                >
-                                  <Edit3 size={14} className="pointer-events-none" />
-                                </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteKnowledge(item.id);
-                                  }}
-                                  disabled={knowledgeLoading}
-                                  className="p-2 text-clay hover:bg-clay/10 rounded transition-all disabled:opacity-50 relative z-10"
-                                >
-                                  <Trash2 size={14} className="pointer-events-none" />
-                                </button>
+                                <button onClick={e => { e.stopPropagation(); setEditingKnowledgeId(item.id); setKnowledgeForm({ category: item.category, content: item.content, is_private: item.is_private }); }} disabled={knowledgeLoading} className="p-2 text-charcoal hover:bg-mist rounded transition-all disabled:opacity-50 relative z-10"><Edit3 size={14} className="pointer-events-none" /></button>
+                                <button onClick={e => { e.stopPropagation(); deleteKnowledge(item.id); }} disabled={knowledgeLoading} className="p-2 text-clay hover:bg-clay/10 rounded transition-all disabled:opacity-50 relative z-10"><Trash2 size={14} className="pointer-events-none" /></button>
                               </div>
                             </td>
                           </tr>
@@ -1895,25 +1247,22 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               </div>
             </div>
           </div>
+
         ) : activeTab === "reservations" ? (
-          <ExecutiveView 
-            bookings={bookings} 
-            apartments={apartments} 
-            onCancelBooking={deleteBooking} 
+          <ExecutiveView
+            bookings={bookings}
+            apartments={apartments}
+            onCancelBooking={deleteBooking}
             onUpdateBookingStatus={updateBookingStatus}
             specialPrices={allSpecialPrices}
           />
         ) : null}
+
+        {/* Toast */}
         {toast && (
-          <motion.div 
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className={`fixed bottom-8 right-8 p-4 px-6 shadow-2xl z-[3000] font-sans text-xs tracking-widest uppercase flex items-center gap-3 border ${
-              toast.type === 'success' ? 'bg-forest text-white border-forest' :
-              toast.type === 'error' ? 'bg-clay text-white border-clay' :
-              'bg-charcoal text-white border-charcoal'
-            }`}
+          <motion.div
+            initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
+            className={`fixed bottom-8 right-8 p-4 px-6 shadow-2xl z-[3000] font-sans text-xs tracking-widest uppercase flex items-center gap-3 border ${toast.type === 'success' ? 'bg-forest text-white border-forest' : toast.type === 'error' ? 'bg-clay text-white border-clay' : 'bg-charcoal text-white border-charcoal'}`}
           >
             {toast.type === 'success' && <Check size={16} />}
             {toast.type === 'error' && <CloseIcon size={16} />}
@@ -1922,149 +1271,68 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           </motion.div>
         )}
 
+        {/* Add New Listing Modal */}
         <AnimatePresence>
           {showAddModal && (
             <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-charcoal/60 backdrop-blur-sm"
-                onClick={() => !isAdding && setShowAddModal(false)}
-              />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-2xl bg-warm-white p-8 md:p-12 border border-mist shadow-2xl overflow-y-auto max-h-[90vh]"
-              >
-                <button 
-                  onClick={() => setShowAddModal(false)}
-                  className="absolute top-6 right-6 text-muted hover:text-charcoal transition-colors"
-                >
-                  <CloseIcon size={24} />
-                </button>
-
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-charcoal/60 backdrop-blur-sm" onClick={() => !isAdding && setShowAddModal(false)} />
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-2xl bg-warm-white p-8 md:p-12 border border-mist shadow-2xl overflow-y-auto max-h-[90vh]">
+                <button onClick={() => setShowAddModal(false)} className="absolute top-6 right-6 text-muted hover:text-charcoal transition-colors"><CloseIcon size={24} /></button>
                 <div className="mb-8">
                   <h2 className="font-serif text-3xl font-light mb-2">Add New Listing</h2>
                   <p className="text-muted text-sm italic">Fill in the details to create a new apartment entry.</p>
                 </div>
-
                 <form onSubmit={handleAddListing} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="flex flex-col gap-2">
                       <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Apartment Name *</label>
-                      <input
-                        required
-                        value={newListing.name}
-                        onChange={e => setNewListing(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder="e.g. The Nordic Sanctuary"
-                        className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay"
-                      />
+                      <input required value={newListing.name} onChange={e => setNewListing(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g. The Nordic Sanctuary" className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay" />
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Location / Neighborhood *</label>
-                      <input
-                        required
-                        value={newListing.neighborhood}
-                        onChange={e => setNewListing(prev => ({ ...prev, neighborhood: e.target.value }))}
-                        placeholder="e.g. Punavuori"
-                        className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay"
-                      />
+                      <input required value={newListing.neighborhood} onChange={e => setNewListing(prev => ({ ...prev, neighborhood: e.target.value }))} placeholder="e.g. Punavuori" className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay" />
                     </div>
                   </div>
-
                   <div className="flex flex-col gap-2">
                     <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Description</label>
-                    <textarea
-                      rows={4}
-                      value={newListing.description}
-                      onChange={e => setNewListing(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Describe the unique features of this apartment..."
-                      className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay resize-none"
-                    />
+                    <textarea rows={4} value={newListing.description} onChange={e => setNewListing(prev => ({ ...prev, description: e.target.value }))} placeholder="Describe the unique features of this apartment..." className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay resize-none" />
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="flex flex-col gap-2">
                       <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Price Per Night (€) *</label>
-                      <input
-                        required
-                        type="number"
-                        value={newListing.price_per_night}
-                        onChange={e => setNewListing(prev => ({ ...prev, price_per_night: e.target.value }))}
-                        placeholder="150"
-                        className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay"
-                      />
+                      <input required type="number" value={newListing.price_per_night} onChange={e => setNewListing(prev => ({ ...prev, price_per_night: e.target.value }))} placeholder="150" className="bg-cream border border-mist p-4 font-sans text-sm outline-none focus:border-clay" />
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Booking Type</label>
                       <div className="flex items-center justify-between bg-cream border border-mist p-3.5 h-[50px]">
-                        <span className="text-xs text-muted font-sans italic">
-                          {newListing.is_instant_book ? "Instant Booking" : "Requires Approval"}
-                        </span>
+                        <span className="text-xs text-muted font-sans italic">{newListing.is_instant_book ? "Instant Booking" : "Requires Approval"}</span>
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="sr-only peer" 
-                            checked={newListing.is_instant_book}
-                            onChange={e => setNewListing(prev => ({ ...prev, is_instant_book: e.target.checked }))}
-                          />
+                          <input type="checkbox" className="sr-only peer" checked={newListing.is_instant_book} onChange={e => setNewListing(prev => ({ ...prev, is_instant_book: e.target.checked }))} />
                           <div className="w-10 h-5 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-forest"></div>
                         </label>
                       </div>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Cover Image</label>
-                      <div className="flex gap-4">
-                        <label className="flex-1 bg-cream border border-mist p-4 font-sans text-sm flex items-center justify-center gap-2 cursor-pointer hover:bg-mist/10 transition-colors">
-                          <Upload size={18} className="text-clay" />
-                          <span className="text-muted uppercase tracking-widest text-[0.6rem]">Upload Image</span>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={e => e.target.files?.[0] && handleNewListingImageUpload(e.target.files[0])}
-                          />
-                        </label>
-                        {newListing.image_url && (
-                          <div className="w-14 h-14 border border-mist relative">
-                            <img src={resolveImageUrl(newListing.image_url)} className="w-full h-full object-cover" />
-                            <button 
-                              type="button"
-                              onClick={() => setNewListing(prev => ({ ...prev, image_url: "" }))}
-                              className="absolute -top-2 -right-2 bg-charcoal text-white rounded-full p-0.5"
-                            >
-                              <CloseIcon size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[0.65rem] tracking-widest uppercase text-muted font-sans font-bold">Cover Image</label>
+                    <div className="flex gap-4">
+                      <label className="flex-1 bg-cream border border-mist p-4 font-sans text-sm flex items-center justify-center gap-2 cursor-pointer hover:bg-mist/10 transition-colors">
+                        <Upload size={18} className="text-clay" />
+                        <span className="text-muted uppercase tracking-widest text-[0.6rem]">Upload Image</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleNewListingImageUpload(e.target.files[0])} />
+                      </label>
+                      {newListing.image_url && (
+                        <div className="w-14 h-14 border border-mist relative">
+                          <img src={resolveImageUrl(newListing.image_url)} className="w-full h-full object-cover" />
+                          <button type="button" onClick={() => setNewListing(prev => ({ ...prev, image_url: "" }))} className="absolute -top-2 -right-2 bg-charcoal text-white rounded-full p-0.5"><CloseIcon size={12} /></button>
+                        </div>
+                      )}
                     </div>
                   </div>
-
                   <div className="pt-6 flex gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddModal(false)}
-                      disabled={isAdding}
-                      className="flex-1 border border-mist p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-mist/10 transition-all disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isAdding}
-                      className="flex-1 bg-charcoal text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-charcoal/90 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
-                    >
-                      {isAdding ? (
-                        <><RefreshCw size={14} className="animate-spin" /> Adding...</>
-                      ) : (
-                        <><Plus size={14} /> Create Listing</>
-                      )}
+                    <button type="button" onClick={() => setShowAddModal(false)} disabled={isAdding} className="flex-1 border border-mist p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-mist/10 transition-all disabled:opacity-50">Cancel</button>
+                    <button type="submit" disabled={isAdding} className="flex-1 bg-charcoal text-white p-4 font-sans text-[0.7rem] tracking-[0.2em] uppercase hover:bg-charcoal/90 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+                      {isAdding ? <><RefreshCw size={14} className="animate-spin" /> Adding...</> : <><Plus size={14} /> Create Listing</>}
                     </button>
                   </div>
                 </form>
