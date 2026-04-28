@@ -1083,9 +1083,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
             <div className="md:hidden mt-4">
               <select 
-                value={activeTab}
-                onChange={(e) => setActiveTab(e.target.value as any)}
-                className="w-full bg-white border border-mist p-2.5 font-sans text-xs uppercase tracking-widest outline-none focus:border-clay appearance-none"
+                  value={activeTab}
+                    onChange={(e) => setActiveTab(e.target.value as any)}
+                  className="w-full bg-white border border-mist p-2.5 font-sans text-xs uppercase tracking-widest outline-none focus:border-clay appearance-none hidden"
                 style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%237A756E\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '0.8rem' }}
               >
                 <option value="listings">Apartments</option>
