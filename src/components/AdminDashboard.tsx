@@ -197,7 +197,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   }, [user]);
 
-  const updateBookingStatus = async (id: string, status: string) => {
+const updateBookingStatus = async (id: string, status: string) => {
     if (status === 'confirmed') {
       showToast("Approving and sending payment link...", "info");
       try {
@@ -234,8 +234,25 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       } catch (err: any) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
-    } else {
+    } else if (status === 'declined') {
       showToast("Declining reservation request...", "info");
+      try {
+        const response = await fetch('/api/decline-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: id }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(`Error: ${result.error || 'Could not decline booking'}`, "error");
+          return;
+        }
+        showToast("Reservation declined — guest notified", "success");
+        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'declined', admin_needs_attention: false } : b));
+      } catch (err: any) {
+        showToast(`Unexpected error: ${err.message}`, "error");
+      }
+    } else {
       const { error } = await supabase
         .from("bookings")
         .update({ status: status, admin_needs_attention: false })
@@ -243,12 +260,10 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       if (error) {
         showToast(`Error updating booking: ${error.message}`, "error");
       } else {
-        showToast("Reservation declined", "success");
         setBookings(prev => prev.map(b => b.id === id ? { ...b, status: status } : b));
       }
     }
   };
-
   const deleteBooking = async (id: string) => {
     showToast("Cancelling reservation...", "info");
     const { error } = await supabase
