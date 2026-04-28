@@ -195,7 +195,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: "hello@annasstays.fi",
+          to: "info@anna-stays.fi",
           subject: "New Enquiry from " + contactForm.firstName.trim() + " " + contactForm.lastName.trim() + " | Anna's Stays",
           html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">New Enquiry</h2><p><strong>Name:</strong> ' + contactForm.firstName.trim() + ' ' + contactForm.lastName.trim() + '</p><p><strong>Email:</strong> ' + contactForm.email.trim() + '</p><p><strong>Apartment:</strong> ' + (contactForm.apartment || 'Not specified') + '</p><p><strong>Check-in:</strong> ' + (contactForm.checkIn || 'Not specified') + '</p><p><strong>Check-out:</strong> ' + (contactForm.checkOut || 'Not specified') + '</p><p><strong>Message:</strong><br>' + (contactForm.message || 'No message') + '</p></div>',
         }),
