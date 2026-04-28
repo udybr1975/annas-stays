@@ -33,11 +33,11 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (attempt > 1) {
-          await new Promise(r => setTimeout(r, attempt * 2000));
+          await new Promise(r => setTimeout(r, attempt * 3000));
         }
 
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-1.5-flash",
           contents: [{
             role: "user",
             parts: [{
