@@ -198,13 +198,14 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  const navBtn = (id: string, label: string) => (
-                  <button
-                    onClick={() => setBooking(l)}
-                    className="bg-transparent border border-birch text-charcoal font-sans text-[0.7rem] tracking-widest uppercase p-3 cursor-pointer w-full hover:bg-forest hover:text-white hover:border-forest transition-all duration-200"
-                  >
-                    {l.is_instant_book !== false ? "View & Book" : "Request to Stay"}
-                  </button>
+   const navBtn = (id: string, label: string) => (
+    <button
+      key={id}
+      onClick={() => scrollTo(id)}
+      className={`bg-none border-none cursor-pointer font-sans text-[0.72rem] font-normal tracking-widest uppercase p-0 pb-0.5 border-b transition-all duration-200 whitespace-nowrap ${activeNav === id ? "text-charcoal border-charcoal" : "text-muted border-transparent"}`}
+    >
+      {label}
+    </button>
   );
 
   return (
@@ -490,7 +491,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
                     onClick={() => setBooking(l)}
                     className="bg-transparent border border-birch text-charcoal font-sans text-[0.7rem] tracking-widest uppercase p-3 cursor-pointer w-full hover:bg-forest hover:text-white hover:border-forest transition-all duration-200"
                   >
-                    View &amp; Book
+                    {l.is_instant_book !== false ? "View & Book" : "Request to Stay"}
                   </button>
                 </div>
               </div>
