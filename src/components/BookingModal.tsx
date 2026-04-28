@@ -375,4 +375,107 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
                 <button
                   disabled={(nights > 0 && !isValidStay) || guestCount === 0}
                   onClick={() => nights > 0 && isValidStay && guestCount > 0 && setStep(2)}
-                  className={`w-full p-4 border-none font-sans text-xs tracking-widest uppercase transition-all $
+                  className={`w-full p-4 border-none font-sans text-xs tracking-widest uppercase transition-all ${nights > 0 && isValidStay && guestCount > 0 ? "cursor-pointer bg-forest text-white hover:bg-forest/90" : "cursor-default bg-mist text-muted opacity-60"}`}
+                >
+                  {guestCount === 0 ? "Select number of guests" : nights > 0 ? isValidStay ? "Continue to Extras →" : `Min ${minStay} ${minStay === 1 ? "night" : "nights"} required` : "Select dates to continue"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── STEP 2 ─── */}
+        {step === 2 && (
+          <div className="max-w-[440px] mx-auto">
+            <h2 className="font-serif text-2xl font-light mb-6 text-center">Enhance your stay</h2>
+            {[
+              { key: "car", label: "Car Rental", sub: "Rental car ready on arrival — ideal for day trips.", tag: "€55/day", val: car, set: setCar },
+              { key: "tf", label: "Airport Transfer", sub: "Private transfer from Helsinki-Vantaa airport.", tag: "€35 flat", val: transfer, set: setTransfer },
+            ].map((x) => (
+              <div key={x.key} onClick={() => x.set((v: boolean) => !v)}
+                className={`border p-5 mb-2.5 cursor-pointer transition-colors ${x.val ? "border-clay bg-cream" : "border-mist bg-warm-white hover:bg-cream/40"}`}>
+                <div className="flex justify-between mb-1">
+                  <span className="font-serif text-lg font-light">{x.label}</span>
+                  <span className={`text-[0.72rem] font-sans ${x.val ? "text-clay" : "text-muted"}`}>{x.val ? "✓ Added" : x.tag}</span>
+                </div>
+                <p className="text-[0.78rem] text-muted leading-relaxed font-light">{x.sub}</p>
+              </div>
+            ))}
+
+            <div className="p-4 px-5 bg-cream my-2 mb-5 text-[0.82rem] text-muted leading-loose">
+              <div className="flex justify-between"><span>Accommodation ({nights} nights)</span><span>€{breakdown.subtotal}</span></div>
+              {breakdown.cleaningFee > 0 && <div className="flex justify-between"><span>Cleaning fee</span><span>€{breakdown.cleaningFee}</span></div>}
+              {car && <div className="flex justify-between"><span>Car Rental ({nights} days)</span><span>€{breakdown.carTotal}</span></div>}
+              {transfer && <div className="flex justify-between"><span>Airport Transfer</span><span>€35</span></div>}
+              <div className="flex justify-between border-t border-mist mt-2 pt-2 font-serif text-lg text-charcoal">
+                <span>Total</span><span>€{total}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep(1)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">Back</button>
+              <button onClick={() => setStep(3)} className="flex-[2] p-3.5 bg-forest text-white border-none font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer hover:bg-forest/90 transition-colors">Continue →</button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── STEP 3 ─── */}
+        {step === 3 && (
+          <div className="max-w-[440px] mx-auto">
+            <h2 className="font-serif text-2xl font-light mb-6 text-center">Your details</h2>
+            <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+              {fi("First name", "fn", "text", "Anna")}
+              {fi("Last name", "ln", "text", "Smith")}
+            </div>
+            {fi("Email address", "em", "email", "your@email.com")}
+
+            <div className="mt-3 flex flex-col gap-1">
+              <label className="text-[0.62rem] tracking-widest uppercase text-muted font-sans">
+                {isInstantBook ? "Special requests" : "Message to Host"}
+                <span className="normal-case text-muted/70 ml-1">(optional)</span>
+              </label>
+              <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
+                placeholder={isInstantBook ? "Any special requests or questions..." : "Tell us a bit about your trip..."}
+                className="w-full p-3.5 bg-cream border border-mist font-sans text-sm focus:outline-none focus:border-clay min-h-[90px] resize-none"
+              />
+            </div>
+
+            <div className="mt-4 mb-5 p-3.5 bg-cream border border-mist text-[0.75rem] text-muted leading-relaxed">
+              {isInstantBook
+                ? "You will be redirected to Stripe to complete your payment securely. Your stay is confirmed once payment is received."
+                : "Your request will be sent to Anna for review. No payment is required now. If approved, you will receive a secure payment link by email within a few hours."}
+            </div>
+
+            <div className="p-4 bg-cream/60 border border-mist mb-5 text-[0.82rem] text-muted leading-loose">
+              <div className="flex justify-between font-medium text-charcoal mb-1"><span>{listing.name}</span></div>
+              <div className="flex justify-between"><span>{range.start} → {range.end}</span><span>{nights} nights</span></div>
+              <div className="flex justify-between"><span>Guests</span><span>{guestCount}</span></div>
+              {breakdown.cleaningFee > 0 && <div className="flex justify-between"><span>Cleaning fee</span><span>€{breakdown.cleaningFee}</span></div>}
+              {car && <div className="flex justify-between"><span>Car Rental</span><span>€{breakdown.carTotal}</span></div>}
+              {transfer && <div className="flex justify-between"><span>Airport Transfer</span><span>€35</span></div>}
+              <div className="flex justify-between border-t border-mist mt-2 pt-2 font-serif text-lg text-charcoal">
+                <span>{isInstantBook ? "Total to pay" : "Total if approved"}</span>
+                <span>€{total}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep(2)} className="flex-1 p-3.5 bg-transparent border border-mist font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer text-muted hover:bg-cream transition-colors">Back</button>
+              <button
+                onClick={isInstantBook ? handleInstantBook : handlePendingRequest}
+                disabled={submitting}
+                className="flex-[2] p-3.5 bg-forest text-white border-none font-sans text-[0.72rem] tracking-widest uppercase cursor-pointer disabled:opacity-60 hover:bg-forest/90 transition-colors flex items-center justify-center gap-2"
+              >
+                {submitting
+                  ? <><RefreshCw size={14} className="animate-spin" /> Submitting...</>
+                  : isInstantBook
+                  ? `Pay €${total} via Stripe →`
+                  : "Send Request →"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
