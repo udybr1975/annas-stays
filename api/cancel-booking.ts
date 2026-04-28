@@ -84,6 +84,18 @@ export default async function handler(req: any, res: any) {
           html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;border-bottom:1px solid #B09B89;padding-bottom:10px;">Reservation Cancelled</h2><p>Dear ' + (guestFirstName || 'Guest') + ',</p><p>This email confirms that your reservation <strong>#' + referenceNumber + '</strong> at <strong>' + apartmentName + '</strong> has been cancelled.</p>' + (refundIssued ? '<p>A full refund of <strong>EUR ' + booking.total_price + '</strong> has been issued to your original payment method and should appear within 5–10 business days.</p>' : '') + '<div style="background-color:#F7F4EF;padding:20px;border-left:4px solid #B09B89;margin:20px 0;font-style:italic;">"I am so sorry to see your cancellation. I was really looking forward to hosting you in Helsinki! I completely understand that plans change, and I truly hope to have the chance to welcome you to one of my stays another time."<br><br>— Anna</div><p style="font-size:0.8rem;color:#7A756E;margin-top:30px;">If you have any questions, please reach out at info@anna-stays.fi</p></div>',
         }),
       });
+// Notification email to Anna
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
+        body: JSON.stringify({
+          from: "Anna's Stays <info@anna-stays.fi>",
+          to: ['info@anna-stays.fi'],
+          subject: 'Booking Cancelled by Guest — #' + referenceNumber + ' | Anna\'s Stays',
+          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Cancelled by Guest</h2><p><strong>Guest:</strong> ' + (guestFirstName || 'Guest') + '</p><p><strong>Email:</strong> <a href="mailto:' + (guestEmail || '') + '">' + (guestEmail || '') + '</a></p><p><strong>Reference:</strong> #' + referenceNumber + '</p><p><strong>Apartment:</strong> ' + apartmentName + '</p>' + (refundIssued ? '<p><strong>Refund:</strong> EUR ' + booking.total_price + ' issued automatically via Stripe</p>' : '<p><strong>Refund:</strong> No payment found — no refund issued</p>') + '</div>',
+        }),
+      });
+      console.log('Cancellation notification sent to info@anna-stays.fi');
     } catch (emailErr) {
       console.error('Cancellation email failed (non-critical):', emailErr);
     }
