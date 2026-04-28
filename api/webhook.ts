@@ -170,21 +170,22 @@ export default async function handler(req: any, res: any) {
     return res.status(500).send('Failed to save guest');
   }
 
-  const { data: bookingData, error: bookingError } = await supabase
-    .from('bookings')
-    .insert({
-      apartment_id: m.apartmentId,
-      guest_id: guestData.id,
-      check_in: m.checkIn,
-      check_out: m.checkOut,
-      total_price: parseFloat(m.totalPrice),
-      guest_count: parseInt(m.guestCount, 10),
-      status: 'confirmed',
-      reference_number: m.referenceNumber,
-      stripe_session_id: session.id,
-      admin_needs_attention: true,
-      notes: m.message || null,
-    })
+const { data: bookingData, error: bookingError } = await supabase
+      .from('bookings')
+      .insert({
+        apartment_id: m.apartmentId,
+        guest_id: guestData.id,
+        check_in: m.checkIn,
+        check_out: m.checkOut,
+        total_price: parseFloat(m.totalPrice),
+        guest_count: parseInt(m.guestCount, 10),
+        status: 'confirmed',
+        reference_number: m.referenceNumber,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || null,
+        admin_needs_attention: true,
+        notes: m.message || null,
+      })
     .select('id')
     .single();
 
