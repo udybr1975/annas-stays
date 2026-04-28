@@ -190,25 +190,25 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
     setContactSubmitting(true);
     setContactError(null);
     try {
-      // Email to Anna
+// Email 1 — notification to Anna at info@anna-stays.fi
       await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: "info@anna-stays.fi",
           subject: "New Enquiry from " + contactForm.firstName.trim() + " " + contactForm.lastName.trim() + " | Anna's Stays",
-          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">New Enquiry</h2><p><strong>Name:</strong> ' + contactForm.firstName.trim() + ' ' + contactForm.lastName.trim() + '</p><p><strong>Email:</strong> ' + contactForm.email.trim() + '</p><p><strong>Apartment:</strong> ' + (contactForm.apartment || 'Not specified') + '</p><p><strong>Check-in:</strong> ' + (contactForm.checkIn || 'Not specified') + '</p><p><strong>Check-out:</strong> ' + (contactForm.checkOut || 'Not specified') + '</p><p><strong>Message:</strong><br>' + (contactForm.message || 'No message') + '</p></div>',
+          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">New Enquiry Received</h2><p><strong>Name:</strong> ' + contactForm.firstName.trim() + ' ' + contactForm.lastName.trim() + '</p><p><strong>Email:</strong> <a href="mailto:' + contactForm.email.trim() + '">' + contactForm.email.trim() + '</a></p><p><strong>Apartment:</strong> ' + (contactForm.apartment || 'Not specified') + '</p><p><strong>Check-in:</strong> ' + (contactForm.checkIn || 'Not specified') + '</p><p><strong>Check-out:</strong> ' + (contactForm.checkOut || 'Not specified') + '</p><p><strong>Message:</strong><br>' + (contactForm.message || 'No message provided') + '</p><p style="margin-top:24px;font-size:0.8rem;color:#7A756E;">Reply directly to this email to respond to the guest.</p></div>',
         }),
       });
 
-      // Acknowledgement to guest
+      // Email 2 — acknowledgement to guest
       await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: contactForm.email.trim(),
           subject: "We received your enquiry | Anna's Stays",
-          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Thank you, ' + contactForm.firstName.trim() + '</h2><p>We have received your enquiry and will get back to you within the hour.</p>' + (contactForm.checkIn ? '<p><strong>Dates:</strong> ' + contactForm.checkIn + ' to ' + contactForm.checkOut + '</p>' : '') + (contactForm.apartment ? '<p><strong>Apartment:</strong> ' + contactForm.apartment + '</p>' : '') + '<p style="margin-top:24px;font-style:italic;color:#5C7A5C;">— Anna Humalainen, Host</p><p style="font-size:0.8rem;color:#7A756E;">hello@annasstays.fi</p></div>',
+          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Thank you, ' + contactForm.firstName.trim() + '</h2><p>We have received your enquiry and will get back to you within the hour.</p>' + (contactForm.checkIn ? '<p><strong>Dates:</strong> ' + contactForm.checkIn + ' to ' + contactForm.checkOut + '</p>' : '') + (contactForm.apartment ? '<p><strong>Apartment:</strong> ' + contactForm.apartment + '</p>' : '') + '<p style="margin-top:24px;font-style:italic;color:#5C7A5C;">— Anna Humalainen, Host</p><p style="font-size:0.8rem;color:#7A756E;">info@anna-stays.fi</p></div>',
         }),
       });
 
