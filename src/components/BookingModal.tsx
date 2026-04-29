@@ -252,30 +252,30 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     try {
       const finalRef = generateRef();
 
-      // 1. Upsert guest
-      const { data: guestData, error: guestError } = await supabase
-        .from("guests")
-        .upsert(
-          {
-            email: form.em.trim().toLowerCase(),
-            first_name: form.fn.trim(),
-            last_name: form.ln.trim(),
-          },
-          { onConflict: "email", ignoreDuplicates: false }
-        )
-        .select("id")
-        .single();
-
-      if (guestError || !guestData?.id) {
-        alert("Could not save your details. Please try again.");
-        setSubmitting(false);
-        return;
+      // 1. Find or create guest — never overwrite existing guest name
+      const guestEmail = form.em.trim().toLowerCase();
+      let guestId: string;
+      const { data: existingGuest } = await supabase
+        .from("guests").select("id").eq("email", guestEmail).maybeSingle();
+      if (existingGuest?.id) {
+        guestId = existingGuest.id;
+      } else {
+        const { data: newGuest, error: newGuestError } = await supabase
+          .from("guests")
+          .insert({ email: guestEmail, first_name: form.fn.trim(), last_name: form.ln.trim() })
+          .select("id").single();
+        if (newGuestError || !newGuest?.id) {
+          alert("Could not save your details. Please try again.");
+          setSubmitting(false);
+          return;
+        }
+        guestId = newGuest.id;
       }
 
       // 2. Insert booking as pending
       const { error: bookingError } = await supabase.from("bookings").insert({
         apartment_id: listing.id,
-        guest_id: guestData.id,
+        guest_id: guestId,
         check_in: range.start,
         check_out: range.end,
         total_price: total,
