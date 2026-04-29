@@ -16,29 +16,20 @@ export default async function handler(req: any, res: any) {
   const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' as any });
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { bookingId } = req.body;
+  const { bookingId, guestEmail, guestFirstName, apartmentName, referenceNumber } = req.body;
 
   if (!bookingId) return res.status(400).json({ error: 'Missing bookingId' });
 
   // 1. Fetch booking from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*)')
+    .select('*')
     .eq('id', bookingId)
     .single();
 
   if (bookingError || !booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
-
-  // Extract guest data from the joined query
-  const guestData = booking.guests;
-  const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-  const guestEmail = guest?.email || null;
-  const guestFirstName = guest?.first_name || 'Guest';
-  const guestFullName = `${guest?.first_name || ''} ${guest?.last_name || ''}`.trim() || 'A guest';
-  const referenceNumber = booking.reference_number || booking.id?.slice(0, 8) || '';
-  const apartmentName = booking.listing_id || 'the apartment';
 
   if (booking.status === 'cancelled') {
     return res.status(400).json({ error: 'Booking is already cancelled' });
@@ -78,10 +69,9 @@ export default async function handler(req: any, res: any) {
   }
 
   // 4. Send cancellation email to guest
-  if (resendKey) {
+  if (resendKey && guestEmail) {
     try {
-      if (guestEmail) {
-        await fetch('https://api.resend.com/emails', {
+      await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +84,6 @@ export default async function handler(req: any, res: any) {
           html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;border-bottom:1px solid #B09B89;padding-bottom:10px;">Reservation Cancelled</h2><p>Dear ' + (guestFirstName || 'Guest') + ',</p><p>This email confirms that your reservation <strong>#' + referenceNumber + '</strong> at <strong>' + apartmentName + '</strong> has been cancelled.</p>' + (refundIssued ? '<p>A full refund of <strong>EUR ' + booking.total_price + '</strong> has been issued to your original payment method and should appear within 5–10 business days.</p>' : '') + '<div style="background-color:#F7F4EF;padding:20px;border-left:4px solid #B09B89;margin:20px 0;font-style:italic;">"I am so sorry to see your cancellation. I was really looking forward to hosting you in Helsinki! I completely understand that plans change, and I truly hope to have the chance to welcome you to one of my stays another time."<br><br>— Anna</div><p style="font-size:0.8rem;color:#7A756E;margin-top:30px;">If you have any questions, please reach out at info@anna-stays.fi</p></div>',
         }),
       });
-      }
 // Notification email to Anna
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
