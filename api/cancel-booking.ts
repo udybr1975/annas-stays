@@ -45,11 +45,12 @@ export default async function handler(req: any, res: any) {
   const apartmentName = booking.apartment_name || 'the apartment';
 
   // 2. Update booking status to cancelled
-  const { error: updateError } = await supabase
+const { error: updateError } = await supabase
     .from('bookings')
     .update({
       status: 'cancelled',
       cancelled_at: new Date().toISOString(),
+      admin_needs_attention: false,
     })
     .eq('id', bookingId);
 
