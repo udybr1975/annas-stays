@@ -158,29 +158,29 @@ if (resendKey && guest?.email) {
     return res.status(200).json({ received: true, duplicate: true });
   }
 
-  const { data: guestData, error: guestError } = await supabase
+const guestEmail = m.guestEmail.toLowerCase().trim();
+let guestId: string;
+const { data: existingGuest } = await supabase
+  .from('guests').select('id').eq('email', guestEmail).maybeSingle();
+if (existingGuest?.id) {
+  guestId = existingGuest.id;
+} else {
+  const { data: newGuest, error: newGuestError } = await supabase
     .from('guests')
-    .upsert({
-      email: m.guestEmail.toLowerCase().trim(),
-      first_name: m.guestFirstName || '',
-      last_name: m.guestLastName || '',
-    }, {
-      onConflict: 'email',
-      ignoreDuplicates: false,
-    })
-    .select('id')
-    .single();
-
-  if (guestError || !guestData?.id) {
-    console.error('Webhook: Failed to save guest:', guestError?.message);
+    .insert({ email: guestEmail, first_name: m.guestFirstName || '', last_name: m.guestLastName || '' })
+    .select('id').single();
+  if (newGuestError || !newGuest?.id) {
+    console.error('Webhook: Failed to save guest:', newGuestError?.message);
     return res.status(500).send('Failed to save guest');
   }
+  guestId = newGuest.id;
+}
 
   const { data: bookingData, error: bookingError } = await supabase
     .from('bookings')
     .insert({
       apartment_id: m.apartmentId,
-      guest_id: guestData.id,
+      guest_id: guestId,
       check_in: m.checkIn,
       check_out: m.checkOut,
       total_price: parseFloat(m.totalPrice),
