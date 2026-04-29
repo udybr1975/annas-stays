@@ -252,30 +252,39 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     try {
       const finalRef = generateRef();
 
-      // 1. Upsert guest
-      const { data: guestData, error: guestError } = await supabase
+      // 1. Look up existing guest by email — never overwrite name of existing guest
+      let guestId: string;
+      const { data: existingGuest } = await supabase
         .from("guests")
-        .upsert(
-          {
+        .select("id")
+        .eq("email", form.em.trim().toLowerCase())
+        .maybeSingle();
+
+      if (existingGuest?.id) {
+        guestId = existingGuest.id;
+      } else {
+        const { data: newGuest, error: newGuestError } = await supabase
+          .from("guests")
+          .insert({
             email: form.em.trim().toLowerCase(),
             first_name: form.fn.trim(),
             last_name: form.ln.trim(),
-          },
-          { onConflict: "email", ignoreDuplicates: false }
-        )
-        .select("id")
-        .single();
+          })
+          .select("id")
+          .single();
 
-      if (guestError || !guestData?.id) {
-        alert("Could not save your details. Please try again.");
-        setSubmitting(false);
-        return;
+        if (newGuestError || !newGuest?.id) {
+          alert("Could not save your details. Please try again.");
+          setSubmitting(false);
+          return;
+        }
+        guestId = newGuest.id;
       }
 
       // 2. Insert booking as pending
       const { error: bookingError } = await supabase.from("bookings").insert({
         apartment_id: listing.id,
-        guest_id: guestData.id,
+        guest_id: guestId,
         check_in: range.start,
         check_out: range.end,
         total_price: total,
@@ -292,7 +301,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
         return;
       }
 
-// 3. ntfy to Anna — via server to avoid browser CORS restrictions
+      // 3. ntfy to Anna
       fetch("/api/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
