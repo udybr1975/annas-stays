@@ -173,17 +173,24 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
-  const fetchBookings = async () => {
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("*, guests(*)")
-      .order("check_in", { ascending: false });
-    if (error) {
-      console.error("Error fetching bookings:", error);
-    } else {
-      setBookings(data || []);
-    }
-  };
+const fetchBookings = async () => {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*, guests(*)")
+    .order("check_in", { ascending: false });
+  if (error) {
+    console.error("Error fetching bookings:", error);
+  } else {
+    // Ensure guests is always an object, never null or empty array
+    const normalized = (data || []).map(b => ({
+      ...b,
+      guests: Array.isArray(b.guests)
+        ? (b.guests[0] || null)
+        : (b.guests || null)
+    }));
+    setBookings(normalized);
+  }
+};
 
   useEffect(() => {
     if (user) {
