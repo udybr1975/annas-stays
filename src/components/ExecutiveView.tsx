@@ -615,8 +615,8 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {bookings.filter(b => b.admin_needs_attention).length > 0 ? (
               bookings.filter(b => b.admin_needs_attention).map(b => {
-                          const guest = Array.isArray(b.guests) ? b.guests[0] : b.guests;
-                          const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "Guest";
+                const guest = Array.isArray(b.guests) ? b.guests[0] : b.guests;
+                const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "Guest";
                 let icon = "📩"; let text = `New Request from ${guestName}`;
                 if (b.unread_message_count > 0) { icon = "💬"; text = `${b.unread_message_count} New Message${b.unread_message_count > 1 ? 's' : ''} from ${guestName}`; }
                 else if (b.status === 'confirmed') { icon = "💰"; text = `New Confirmed Booking: ${guestName}`; }
