@@ -249,29 +249,23 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
-  const deleteBooking = async (id: string) => {
+const deleteBooking = async (id: string) => {
     showToast("Cancelling reservation...", "info");
-    const { error } = await supabase
-      .from("bookings")
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) {
-      showToast("Error cancelling booking: " + error.message, "error");
-    } else {
-      showToast("Reservation cancelled", "success");
-      const b = bookings.find(x => x.id === id);
-      if (b) {
-        const guestData = b.guests;
-        const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-        const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "A guest";
-        const aptName = apartments.find(a => String(a.id) === String(b.apartment_id))?.name || "one of the apartments";
-        fetch("https://ntfy.sh/annas-stays-helsinki-99", {
-          method: "POST",
-          body: `${guestName} has cancelled their stay at ${aptName} for the dates ${b.check_in} to ${b.check_out} (${b.guest_count} guests).`,
-          headers: { "Title": "Stay Cancelled", "X-Priority": "4", "X-Tags": "wastebasket,warning", "Content-Type": "text/plain" }
-        }).catch(err => console.error("Ntfy error:", err));
+    try {
+      const response = await fetch('/api/cancel-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: id }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        showToast(`Error: ${result.error || 'Could not cancel booking'}`, "error");
+        return;
       }
+      showToast("Reservation cancelled — guest notified by email", "success");
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', cancelled_at: new Date().toISOString() } : b));
+    } catch (err: any) {
+      showToast(`Unexpected error: ${err.message}`, "error");
     }
   };
 
