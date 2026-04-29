@@ -173,24 +173,17 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
-const fetchBookings = async () => {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("*, guests(*)")
-    .order("check_in", { ascending: false });
-  if (error) {
-    console.error("Error fetching bookings:", error);
-  } else {
-    // Ensure guests is always an object, never null or empty array
-    const normalized = (data || []).map(b => ({
-      ...b,
-      guests: Array.isArray(b.guests)
-        ? (b.guests[0] || null)
-        : (b.guests || null)
-    }));
-    setBookings(normalized);
-  }
-};
+  const fetchBookings = async () => {
+    const { data, error } = await supabase
+      .from("bookings")
+      .select("*, guests(*)")
+      .order("check_in", { ascending: false });
+    if (error) {
+      console.error("Error fetching bookings:", error);
+    } else {
+      setBookings(data || []);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -204,7 +197,7 @@ const fetchBookings = async () => {
     }
   }, [user]);
 
-const updateBookingStatus = async (id: string, status: string) => {
+  const updateBookingStatus = async (id: string, status: string) => {
     if (status === 'confirmed') {
       showToast("Approving and sending payment link...", "info");
       try {
@@ -219,6 +212,7 @@ const updateBookingStatus = async (id: string, status: string) => {
           return;
         }
         showToast("Approved — payment link sent to guest", "success");
+        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'awaiting_payment', admin_needs_attention: false } : b));
       } catch (err: any) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
@@ -240,25 +234,8 @@ const updateBookingStatus = async (id: string, status: string) => {
       } catch (err: any) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
-    } else if (status === 'declined') {
-      showToast("Declining reservation request...", "info");
-      try {
-        const response = await fetch('/api/decline-booking', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: id }),
-        });
-        const result = await response.json();
-        if (!response.ok) {
-          showToast(`Error: ${result.error || 'Could not decline booking'}`, "error");
-          return;
-        }
-        showToast("Reservation declined — guest notified", "success");
-        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'declined', admin_needs_attention: false } : b));
-      } catch (err: any) {
-        showToast(`Unexpected error: ${err.message}`, "error");
-      }
     } else {
+      showToast("Declining reservation request...", "info");
       const { error } = await supabase
         .from("bookings")
         .update({ status: status, admin_needs_attention: false })
@@ -266,27 +243,35 @@ const updateBookingStatus = async (id: string, status: string) => {
       if (error) {
         showToast(`Error updating booking: ${error.message}`, "error");
       } else {
+        showToast("Reservation declined", "success");
         setBookings(prev => prev.map(b => b.id === id ? { ...b, status: status } : b));
       }
     }
   };
+
   const deleteBooking = async (id: string) => {
     showToast("Cancelling reservation...", "info");
-    try {
-      const response = await fetch('/api/cancel-booking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: id }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        showToast(`Error: ${result.error || 'Could not cancel booking'}`, "error");
-        return;
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      showToast("Error cancelling booking: " + error.message, "error");
+    } else {
+      showToast("Reservation cancelled", "success");
+      const b = bookings.find(x => x.id === id);
+      if (b) {
+        const guestData = b.guests;
+        const guest = Array.isArray(guestData) ? guestData[0] : guestData;
+        const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "A guest";
+        const aptName = apartments.find(a => String(a.id) === String(b.apartment_id))?.name || "one of the apartments";
+        fetch("https://ntfy.sh/annas-stays-helsinki-99", {
+          method: "POST",
+          body: `${guestName} has cancelled their stay at ${aptName} for the dates ${b.check_in} to ${b.check_out} (${b.guest_count} guests).`,
+          headers: { "Title": "Stay Cancelled", "X-Priority": "4", "X-Tags": "wastebasket,warning", "Content-Type": "text/plain" }
+        }).catch(err => console.error("Ntfy error:", err));
       }
-      showToast("Reservation cancelled — guest notified by email", "success");
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', cancelled_at: new Date().toISOString() } : b));
-    } catch (err: any) {
-      showToast(`Unexpected error: ${err.message}`, "error");
     }
   };
 
