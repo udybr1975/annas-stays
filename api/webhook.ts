@@ -87,9 +87,8 @@ export default async function handler(req: any, res: any) {
 
     const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
 
-if (resendKey && guest?.email) {
+    if (resendKey && guest?.email) {
       try {
-        // Email to guest
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -102,7 +101,6 @@ if (resendKey && guest?.email) {
         });
         console.log('Confirmation email sent to ' + guest.email);
 
-        // Notification email to Anna
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -158,29 +156,27 @@ if (resendKey && guest?.email) {
     return res.status(200).json({ received: true, duplicate: true });
   }
 
-const guestEmail = m.guestEmail.toLowerCase().trim();
-let guestId: string;
-const { data: existingGuest } = await supabase
-  .from('guests').select('id').eq('email', guestEmail).maybeSingle();
-if (existingGuest?.id) {
-  guestId = existingGuest.id;
-} else {
-  const { data: newGuest, error: newGuestError } = await supabase
+  // Always insert a fresh guest row — email is no longer unique
+  const { data: newGuest, error: guestError } = await supabase
     .from('guests')
-    .insert({ email: guestEmail, first_name: m.guestFirstName || '', last_name: m.guestLastName || '' })
-    .select('id').single();
-  if (newGuestError || !newGuest?.id) {
-    console.error('Webhook: Failed to save guest:', newGuestError?.message);
+    .insert({
+      email: m.guestEmail.toLowerCase().trim(),
+      first_name: m.guestFirstName || '',
+      last_name: m.guestLastName || '',
+    })
+    .select('id')
+    .single();
+
+  if (guestError || !newGuest?.id) {
+    console.error('Webhook: Failed to save guest:', guestError?.message);
     return res.status(500).send('Failed to save guest');
   }
-  guestId = newGuest.id;
-}
 
   const { data: bookingData, error: bookingError } = await supabase
     .from('bookings')
     .insert({
       apartment_id: m.apartmentId,
-      guest_id: guestId,
+      guest_id: newGuest.id,
       check_in: m.checkIn,
       check_out: m.checkOut,
       total_price: parseFloat(m.totalPrice),
@@ -202,9 +198,8 @@ if (existingGuest?.id) {
 
   console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
 
-if (resendKey) {
+  if (resendKey) {
     try {
-      // Email to guest
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -217,7 +212,6 @@ if (resendKey) {
       });
       console.log('Email sent to ' + m.guestEmail);
 
-      // Notification email to Anna
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
