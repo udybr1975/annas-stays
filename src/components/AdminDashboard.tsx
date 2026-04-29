@@ -185,7 +185,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
-  useEffect(() => {
+useEffect(() => {
     if (user) {
       const channel = supabase
         .channel('bookings_changes')
