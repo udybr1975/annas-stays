@@ -278,7 +278,8 @@ const updateBookingStatus = async (id: string, status: string) => {
         return;
       }
       showToast("Reservation cancelled — guest notified by email", "success");
-      fetchBookings();
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', cancelled_at: new Date().toISOString() } : b));
+=> prev.map(b => b.id === id ? { ...b, status: 'cancelled', cancelled_at: new Date().toISOString() } : b));
     } catch (err: any) {
       showToast(`Unexpected error: ${err.message}`, "error");
     }
