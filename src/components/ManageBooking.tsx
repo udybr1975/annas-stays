@@ -250,7 +250,7 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `${guestFullName} has cancelled their stay at ${aptName} for the dates ${booking.check_in} to ${booking.check_out} (${booking.guest_count} guests).`,
+          body: `${guestFullName} has cancelled their stay at ${aptName} for the dates ${booking.check_in} to ${booking.check_out} (${booking.guest_count} guests).`,
           title: 'Stay Cancelled',
           priority: 'default',
         }),
