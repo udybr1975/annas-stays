@@ -212,7 +212,6 @@ const updateBookingStatus = async (id: string, status: string) => {
           return;
         }
         showToast("Approved — payment link sent to guest", "success");
-        setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'awaiting_payment', admin_needs_attention: false } : b));
       } catch (err: any) {
         showToast(`Unexpected error: ${err.message}`, "error");
       }
