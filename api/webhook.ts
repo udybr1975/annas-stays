@@ -122,7 +122,7 @@ export default async function handler(req: any, res: any) {
         method: 'POST',
         body: 'Payment received: ' + (guest?.first_name || '') + ' ' + (guest?.last_name || '') + ' | ' + booking.reference_number + ' | EUR ' + booking.total_price,
         headers: {
-          'Title': 'Booking Confirmed — Payment Received',
+          'Title': 'Booking Confirmed - Payment Received',
           'Priority': 'high',
           'Content-Type': 'text/plain',
         },
