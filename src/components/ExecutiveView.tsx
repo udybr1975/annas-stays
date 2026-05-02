@@ -447,13 +447,41 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
         .update({ notes: updatedNotes, last_message_at: new Date().toISOString(), admin_needs_attention: false, unread_message_count: 0 })
         .eq('id', selectedBooking.id);
       if (dbError) throw dbError;
+      const safeMessage = guestMessage.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+      const manageUrl = "https://anna-stays.fi/manage-booking/" + selectedBooking.id + "?email=" + encodeURIComponent(guestEmail);
+      const messageHtml =
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+        '<body style="margin:0;padding:20px 0;background:#F7F4EF;">' +
+        '<div style="font-family:Arial,Helvetica,sans-serif;color:#2C2C2A;max-width:600px;margin:0 auto;background:#FFFFFF;border:1px solid #E8E3DC;">' +
+        '<div style="padding:28px 40px 24px;border-bottom:1px solid #E8E3DC;">' +
+        '<p style="font-family:Georgia,serif;font-size:22px;font-weight:normal;margin:0;letter-spacing:0.04em;color:#2C2C2A;">Anna\'s Stays</p>' +
+        '<p style="font-size:10px;color:#7A756E;margin:5px 0 0;letter-spacing:0.2em;text-transform:uppercase;">Helsinki</p>' +
+        '</div>' +
+        '<div style="padding:40px;">' +
+        '<h1 style="font-family:Georgia,serif;font-size:24px;font-weight:normal;margin:0 0 6px;color:#2C2C2A;">A message from Anna.</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">Regarding your stay — #' + selectedBooking.reference_number + '</p>' +
+        '<div style="margin:0 0 28px;padding:20px 24px;border-left:3px solid #3D4F3E;background:#F7F4EF;">' +
+        '<p style="font-family:Georgia,serif;font-size:14px;color:#2C2C2A;margin:0;line-height:1.8;">' + safeMessage + '</p>' +
+        '</div>' +
+        '<p style="font-size:12px;color:#7A756E;margin:0 0 4px;">You can reply directly to this email and Anna will get back to you.</p>' +
+        '<p style="font-size:12px;color:#7A756E;margin:0 0 28px;"><strong>Apartment:</strong> ' + (apt?.name || "") + '</p>' +
+        '<div style="text-align:center;margin:36px 0 8px;">' +
+        '<a href="' + manageUrl + '" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">Manage Your Booking &rarr;</a>' +
+        '</div>' +
+        '<p style="margin:32px 0 0;font-family:Georgia,serif;font-size:15px;color:#5C7A5C;font-style:italic;">&mdash; Anna</p>' +
+        '</div>' +
+        '<div style="padding:18px 40px;border-top:1px solid #E8E3DC;background:#F7F4EF;text-align:center;">' +
+        '<p style="font-size:11px;color:#7A756E;margin:0;">Anna\'s Stays &middot; Helsinki &middot; <a href="mailto:info@anna-stays.fi" style="color:#7A756E;text-decoration:none;">info@anna-stays.fi</a></p>' +
+        '</div></div></body></html>';
+
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: guestEmail,
-          subject: `Message from Anna's Stays — ${apt?.name || "your upcoming stay"}`,
-          html: `<div style="font-family:sans-serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:20px;border:1px solid #E8E3DC;"><p>${guestMessage.replace(/\n/g, '<br>')}</p><p style="margin-top:30px;">Best regards,<br><strong>Anna's Stays</strong></p></div>`
+          replyTo: "info@anna-stays.fi",
+          subject: "A message from Anna — #" + selectedBooking.reference_number + " | Anna's Stays",
+          html: messageHtml,
         })
       });
       if (response.ok) {

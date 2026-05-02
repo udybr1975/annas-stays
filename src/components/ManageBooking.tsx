@@ -238,15 +238,41 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
         ? `${guest.first_name} ${guest.last_name || ''}`.trim()
         : guest?.name || 'A guest';
 
-      fetch("https://ntfy.sh/annas-stays-helsinki-99", {
+      fetch("/api/notify", {
         method: "POST",
-        body: `New message from ${guestName} (${booking.reference_number}):\n"${replyMessage.trim()}"`,
-        headers: {
-          "Title": "New Guest Message",
-          "X-Priority": "high",
-          "Content-Type": "text/plain",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "New Guest Message",
+          priority: "high",
+          body: `New message from ${guestName} (${booking.reference_number}):\n"${replyMessage.trim()}"`,
+        }),
       }).catch(err => console.error("ntfy error:", err));
+
+      fetch("/api/send-email", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: "info@anna-stays.fi",
+          replyTo: guest?.email || undefined,
+          subject: "New Guest Message — #" + booking.reference_number + " | Anna's Stays",
+          html:
+            '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;">' +
+            '<h2 style="font-weight:normal;">New Message from Guest</h2>' +
+            "<p><strong>Guest:</strong> " + guestName + "</p>" +
+            "<p><strong>Reference:</strong> #" + booking.reference_number + "</p>" +
+            "<p><strong>Apartment:</strong> " + (listing?.name || "") + "</p>" +
+            "<p><strong>Check-in:</strong> " + booking.check_in + "</p>" +
+            "<p><strong>Check-out:</strong> " + booking.check_out + "</p>" +
+            '<div style="margin:24px 0;padding:16px 20px;background:#F7F4EF;border-left:4px solid #B09B89;">' +
+            '<p style="white-space:pre-wrap;margin:0;">' + replyMessage.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" +
+            "</div>" +
+            (guest?.email
+              ? '<p style="font-size:0.8rem;color:#7A756E;">Reply directly to this email to respond to the guest.</p>'
+              : "") +
+            "</div>",
+        }),
+      }).catch(err => console.error("guest-message email error:", err));
 
       setReplySent(true);
       setReplyMessage("");

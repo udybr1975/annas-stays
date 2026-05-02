@@ -5,7 +5,7 @@ export default async function handler(req: any, res: any) {
   if (!body) return res.status(400).json({ error: 'Missing body' });
 
   try {
-    await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+    await fetch(process.env.NTFY_URL!, {
       method: 'POST',
       body: body,
       headers: {

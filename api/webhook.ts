@@ -1,5 +1,41 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { GoogleGenAI } from '@google/genai';
+import { emailWrap, manageButton, bookingTable, apartmentBlock, entryCodesNote, annaSignature, heroImage, annaMessage } from './emailTemplate.js';
+
+async function generateAptSummary(
+  name: string,
+  neighbourhood: string,
+  details: { category: string; content: string }[],
+  tags: string[],
+): Promise<string> {
+  try {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) return '';
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const prompt =
+      "You are writing a warm, personal apartment description for a guest confirmation email from a boutique Helsinki short-stay host called Anna's Stays. " +
+      "Using only the following public apartment details, write 3-4 sentences that highlight the best features, the neighbourhood, and practical information like check-in time. " +
+      "Write in a warm, understated Scandinavian tone. Do not invent any details not present in the data. Keep it under 80 words.\n\n" +
+      'Apartment name: ' + name + '\n' +
+      'Neighbourhood: ' + neighbourhood + '\n' +
+      'Details: ' + details.map(d => d.category + ': ' + d.content).join('\n') + '\n' +
+      'Tags: ' + tags.join(', ');
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    });
+    const text = ((response as any).text || '').trim();
+    if (!text) return '';
+    return (
+      '<p style="font-size:14px;color:#2C2C2A;line-height:1.8;margin:20px 0 0;">' +
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, ' ') +
+      '</p>'
+    );
+  } catch {
+    return '';
+  }
+}
 
 export const config = {
   api: {
@@ -55,7 +91,7 @@ export default async function handler(req: any, res: any) {
   if (m?.source === 'approve_booking' && m?.bookingId) {
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('*, guests(*)')
+      .select('*, guests(*), apartments(name)')
       .eq('id', m.bookingId)
       .single();
 
@@ -86,22 +122,64 @@ export default async function handler(req: any, res: any) {
     console.log('Webhook: Booking ' + booking.reference_number + ' confirmed via payment link');
 
     const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
+    const apt = booking.apartments as any;
 
     if (resendKey && guest?.email) {
       try {
-        await fetch('https://api.resend.com/emails', {
+        // Fetch apartment details for confirmation email
+        const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
+          supabase.from('apartments').select('neighborhood, tags, images').eq('id', booking.apartment_id).single(),
+          supabase.from('apartment_details').select('category, content').eq('apartment_id', booking.apartment_id).eq('is_private', false),
+        ]);
+
+        const manageUrl = 'https://anna-stays.fi/manage-booking/' + booking.id + '?email=' + encodeURIComponent(guest.email);
+
+        const aptImages: string[] = aptRow?.images || [];
+        const aiSummary = await generateAptSummary(
+          apt?.name || '',
+          aptRow?.neighborhood || '',
+          aptDetails || [],
+          aptRow?.tags || [],
+        );
+
+        // EMAIL 4 — Booking confirmed after payment link
+        const guestHtml = emailWrap(
+          heroImage(aptImages[0] || '') +
+          '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your booking is confirmed.</h1>' +
+          '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">Payment received. We look forward to welcoming you to Helsinki.</p>' +
+          bookingTable([
+            ['Reference',  '#' + booking.reference_number],
+            ['Apartment',  apt?.name || 'the apartment'],
+            ['Check-in',   booking.check_in],
+            ['Check-out',  booking.check_out],
+            ['Guests',     String(booking.guest_count)],
+            ['Total paid', 'EUR ' + booking.total_price],
+          ]) +
+          apartmentBlock(
+            { name: apt?.name, neighborhood: aptRow?.neighborhood, tags: aptRow?.tags },
+            aptDetails || [],
+          ) +
+          aiSummary +
+          annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
+          entryCodesNote() +
+          manageButton(manageUrl) +
+          annaSignature()
+        );
+
+        await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
           body: JSON.stringify({
             from: "Anna's Stays <info@anna-stays.fi>",
             to: [guest.email],
             subject: 'Booking Confirmed — #' + booking.reference_number + ' | Anna\'s Stays',
-            html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Confirmed</h2><p>Dear ' + (guest.first_name || 'Guest') + ',</p><p>Your payment has been received and your stay at <strong>' + (booking.apartment_name || 'the apartment') + '</strong> is confirmed.</p><p><strong>Reference:</strong> #' + booking.reference_number + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Guests:</strong> ' + booking.guest_count + '</p><p><strong>Total Paid:</strong> EUR ' + booking.total_price + '</p><p>We will send your entry codes 24 hours before check-in.</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>',
+            html: guestHtml,
           }),
         });
         console.log('Confirmation email sent to ' + guest.email);
 
-        await fetch('https://api.resend.com/emails', {
+        // Host notification (plain, internal)
+        await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
           body: JSON.stringify({
@@ -118,7 +196,7 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
-      await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+      await fetch(process.env.NTFY_URL!, {
         method: 'POST',
         body: 'Payment received: ' + (guest?.first_name || '') + ' ' + (guest?.last_name || '') + ' | ' + booking.reference_number + ' | EUR ' + booking.total_price,
         headers: {
@@ -200,19 +278,60 @@ export default async function handler(req: any, res: any) {
 
   if (resendKey) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      // Fetch apartment details for confirmation email
+      const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
+        supabase.from('apartments').select('neighborhood, tags, images').eq('id', m.apartmentId).single(),
+        supabase.from('apartment_details').select('category, content').eq('apartment_id', m.apartmentId).eq('is_private', false),
+      ]);
+
+      const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingData.id + '?email=' + encodeURIComponent(m.guestEmail);
+
+      const aptImages: string[] = aptRow?.images || [];
+      const aiSummary = await generateAptSummary(
+        m.apartmentName || '',
+        aptRow?.neighborhood || '',
+        aptDetails || [],
+        aptRow?.tags || [],
+      );
+
+      // EMAIL 1 — Instant booking confirmed
+      const guestHtml = emailWrap(
+        heroImage(aptImages[0] || '') +
+        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your booking is confirmed.</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">We look forward to welcoming you to Helsinki.</p>' +
+        bookingTable([
+          ['Reference',  '#' + m.referenceNumber],
+          ['Apartment',  m.apartmentName],
+          ['Check-in',   m.checkIn],
+          ['Check-out',  m.checkOut],
+          ['Guests',     m.guestCount],
+          ['Total paid', 'EUR ' + m.totalPrice],
+        ]) +
+        apartmentBlock(
+          { name: m.apartmentName, neighborhood: aptRow?.neighborhood, tags: aptRow?.tags },
+          aptDetails || [],
+        ) +
+        aiSummary +
+        annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
+        entryCodesNote() +
+        manageButton(manageUrl) +
+        annaSignature()
+      );
+
+      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
           from: "Anna's Stays <info@anna-stays.fi>",
           to: [m.guestEmail],
           subject: 'Booking Confirmed — #' + m.referenceNumber + ' | Anna\'s Stays',
-          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Confirmed</h2><p>Dear ' + m.guestFirstName + ',</p><p>Your payment has been received and your stay at <strong>' + m.apartmentName + '</strong> is confirmed.</p><p><strong>Reference:</strong> #' + m.referenceNumber + '</p><p><strong>Check-in:</strong> ' + m.checkIn + '</p><p><strong>Check-out:</strong> ' + m.checkOut + '</p><p><strong>Guests:</strong> ' + m.guestCount + '</p><p><strong>Total Paid:</strong> EUR ' + m.totalPrice + '</p><p>We will send your entry codes 24 hours before check-in.</p><p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p></div>',
+          html: guestHtml,
         }),
       });
       console.log('Email sent to ' + m.guestEmail);
 
-      await fetch('https://api.resend.com/emails', {
+      // Host notification (plain, internal)
+      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
@@ -229,7 +348,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+    await fetch(process.env.NTFY_URL!, {
       method: 'POST',
       body: 'Instant booking: ' + m.guestFirstName + ' ' + m.guestLastName + ' | ' + m.apartmentName + ' | ' + m.checkIn + ' to ' + m.checkOut + ' | EUR ' + m.totalPrice,
       headers: {

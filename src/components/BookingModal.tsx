@@ -270,7 +270,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       }
 
       // 2. Insert booking as pending
-      const { error: bookingError } = await supabase.from("bookings").insert({
+      const { data: newBooking, error: bookingError } = await supabase.from("bookings").insert({
         apartment_id: listing.id,
         guest_id: newGuest.id,
         check_in: range.start,
@@ -281,9 +281,9 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
         reference_number: finalRef,
         admin_needs_attention: true,
         notes: form.message.trim() || null,
-      });
+      }).select("id").single();
 
-      if (bookingError) {
+      if (bookingError || !newBooking?.id) {
         alert("Could not submit your request. Please try again.");
         setSubmitting(false);
         return;
@@ -292,6 +292,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       // 3. ntfy to Anna — via server to avoid browser CORS restrictions
       fetch("/api/notify", {
         method: "POST",
+        keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "New Booking Request",
@@ -310,32 +311,60 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             " | EUR " +
             total,
         }),
-      }).catch(() => {});
+      })
+        .then(async r => { const d = await r.json().catch(() => null); console.log("[BookingModal] step3 ntfy status=" + r.status, d); })
+        .catch(e => console.error("[BookingModal] step3 ntfy FAILED:", e));
 
       // 4. Acknowledgement email to guest
+      const manageUrl = "https://anna-stays.fi/manage-booking/" + newBooking.id + "?email=" + encodeURIComponent(form.em.trim().toLowerCase());
+      const guestEmailHtml =
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>' +
+        '<body style="margin:0;padding:20px 0;background:#F7F4EF;">' +
+        '<div style="font-family:Arial,Helvetica,sans-serif;color:#2C2C2A;max-width:600px;margin:0 auto;background:#FFFFFF;border:1px solid #E8E3DC;">' +
+        '<div style="padding:28px 40px 24px;border-bottom:1px solid #E8E3DC;">' +
+        '<p style="font-family:Georgia,serif;font-size:22px;font-weight:normal;margin:0;letter-spacing:0.04em;color:#2C2C2A;">Anna\'s Stays</p>' +
+        '<p style="font-size:10px;color:#7A756E;margin:5px 0 0;letter-spacing:0.2em;text-transform:uppercase;">Helsinki</p>' +
+        '</div>' +
+        '<div style="padding:40px;">' +
+        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Request received.</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">No payment required now. We\'ll review your request and be in touch shortly.</p>' +
+        '<table style="width:100%;border-collapse:collapse;margin:24px 0;">' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Reference</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">#' + finalRef + '</td></tr>' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Apartment</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">' + listing.name + '</td></tr>' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Check-in</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">' + range.start + '</td></tr>' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Check-out</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">' + range.end + '</td></tr>' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Guests</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">' + guestCount + '</td></tr>' +
+        '<tr style="border-bottom:1px solid #E8E3DC;"><td style="padding:11px 10px 11px 0;color:#7A756E;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;width:36%;vertical-align:top;">Total if approved</td><td style="padding:11px 0;font-family:Georgia,serif;font-size:14px;color:#2C2C2A;">EUR ' + total + '</td></tr>' +
+        '</table>' +
+        '<div style="border-top:1px solid #E8E3DC;margin:28px 0 24px;padding-top:24px;">' +
+        '<p style="font-family:Georgia,serif;font-size:14px;color:#5C7A5C;font-style:italic;margin:0;line-height:1.8;">Thank you for choosing Anna\'s Stays. I review every request personally and will be in touch very shortly.</p>' +
+        '</div>' +
+        '<div style="text-align:center;margin:36px 0 8px;">' +
+        '<a href="' + manageUrl + '" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">Manage Your Booking &rarr;</a>' +
+        '</div>' +
+        '<p style="margin:32px 0 0;font-family:Georgia,serif;font-size:15px;color:#5C7A5C;font-style:italic;">&mdash; Anna</p>' +
+        '</div>' +
+        '<div style="padding:18px 40px;border-top:1px solid #E8E3DC;background:#F7F4EF;text-align:center;">' +
+        '<p style="font-size:11px;color:#7A756E;margin:0;">Anna\'s Stays &middot; Helsinki &middot; <a href="mailto:info@anna-stays.fi" style="color:#7A756E;text-decoration:none;">info@anna-stays.fi</a></p>' +
+        '</div></div></body></html>';
+
       fetch("/api/send-email", {
         method: "POST",
+        keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: form.em.trim().toLowerCase(),
-          subject: "Reservation Request Received — #" + finalRef + " | Anna's Stays",
-          html:
-            '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;">' +
-            '<h2 style="font-weight:normal;">Request Received</h2>' +
-            "<p>Dear " + form.fn.trim() + ",</p>" +
-            "<p>Thank you for your request for <strong>" + listing.name + "</strong>. We will review it and get back to you shortly. If approved, you will receive a secure payment link by email.</p>" +
-            "<p><strong>Reference:</strong> #" + finalRef + "</p>" +
-            "<p><strong>Check-in:</strong> " + range.start + "</p>" +
-            "<p><strong>Check-out:</strong> " + range.end + "</p>" +
-            "<p><strong>Total if approved:</strong> EUR " + total + "</p>" +
-            '<p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p>' +
-            "</div>",
+          subject: "Request Received — #" + finalRef + " | Anna's Stays",
+          html: guestEmailHtml,
         }),
-      }).catch(() => {});
+      })
+        .then(async r => { const d = await r.json().catch(() => null); console.log("[BookingModal] step4 guest-email status=" + r.status, d); })
+        .catch(e => console.error("[BookingModal] step4 guest-email FAILED:", e));
 
       // 5. Notification email to Anna
       fetch("/api/send-email", {
         method: "POST",
+        keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: "info@anna-stays.fi",
@@ -354,7 +383,9 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             (form.message.trim() ? "<p><strong>Message:</strong> " + form.message.trim() + "</p>" : "") +
             "</div>",
         }),
-      }).catch(() => {});
+      })
+        .then(async r => { const d = await r.json().catch(() => null); console.log("[BookingModal] step5 info-email status=" + r.status, d); })
+        .catch(e => console.error("[BookingModal] step5 info-email FAILED:", e));
 
       // 6. Redirect to success page
       window.location.href = `/booking-success?ref=${finalRef}&pending=true`;

@@ -1,26 +1,23 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { Search, ArrowLeft, RefreshCw, AlertCircle, Mail, Hash } from "lucide-react";
 
 export default function FindBooking() {
-  const [bookingId, setBookingId] = useState("");
-  const [email, setEmail] = useState("");
+  const [searchParams] = useSearchParams();
+  const [bookingId, setBookingId] = useState(searchParams.get("ref") || "");
+  const [email, setEmail] = useState(searchParams.get("email") || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSearch = async (refVal: string, emailVal: string) => {
     setLoading(true);
     setError(null);
-
     try {
-      // Clean the booking ID (remove RES- prefix if guest typed it)
-      const cleanRef = bookingId.trim().toUpperCase();
+      const cleanRef = refVal.trim().toUpperCase();
       const refToSearch = cleanRef.startsWith("RES-") ? cleanRef : `RES-${cleanRef}`;
 
-      // STEP 1: Find the booking by reference number
       const { data: bookingData, error: bookingError } = await supabase
         .from('bookings')
         .select('id, guest_id, status')
@@ -31,34 +28,42 @@ export default function FindBooking() {
         throw new Error("We couldn't find a reservation with that reference number.");
       }
 
-      // Task 2: Deny access if cancelled or declined
       if (bookingData.status === 'cancelled' || bookingData.status === 'declined') {
         throw new Error("This reservation is no longer accessible.");
       }
 
-      // STEP 2: Verify the guest email matches the guest_id
       const { data: guestData, error: guestError } = await supabase
         .from('guests')
         .select('email')
         .eq('id', bookingData.guest_id)
-        .eq('email', email.trim().toLowerCase())
+        .eq('email', emailVal.trim().toLowerCase())
         .single();
 
       if (guestError || !guestData) {
         throw new Error("The email address provided does not match the one used for this reservation.");
       }
 
-      // Store a temporary "session" in localStorage to bypass verification on the manage page
-      localStorage.setItem(`booking_auth_${bookingData.id}`, email.trim().toLowerCase());
-      
-      // Redirect to the management page with email for "Fast Pass" verification
-      navigate(`/manage-booking/${bookingData.id}?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      localStorage.setItem(`booking_auth_${bookingData.id}`, emailVal.trim().toLowerCase());
+      navigate(`/manage-booking/${bookingData.id}?email=${encodeURIComponent(emailVal.trim().toLowerCase())}`);
     } catch (err: any) {
       console.error("Search error:", err);
       setError(err.message || "An error occurred during search.");
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    const urlRef = searchParams.get("ref");
+    const urlEmail = searchParams.get("email");
+    if (urlRef && urlEmail) {
+      doSearch(urlRef, urlEmail);
+    }
+  }, []);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await doSearch(bookingId, email);
   };
 
   return (

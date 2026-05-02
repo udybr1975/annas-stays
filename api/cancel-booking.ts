@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { emailWrap, bookingTable, annaSignature, annaMessage } from './emailTemplate.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -23,7 +24,7 @@ export default async function handler(req: any, res: any) {
   // 1. Fetch booking and guest from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*)')
+    .select('*, guests(*), apartments(name)')
     .eq('id', bookingId)
     .single();
 
@@ -38,11 +39,29 @@ export default async function handler(req: any, res: any) {
   // Extract guest data from DB
   const guestData = booking.guests;
   const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-  const guestEmail = guest?.email || null;
-  const guestFirstName = guest?.first_name || 'Guest';
-  const guestFullName = `${guest?.first_name || ''} ${guest?.last_name || ''}`.trim() || 'A guest';
+  let guestEmail = guest?.email || null;
+  let guestFirstName = guest?.first_name || 'Guest';
+  let guestFullName = `${guest?.first_name || ''} ${guest?.last_name || ''}`.trim() || 'A guest';
+  console.log('[cancel-booking] FK join result — guestData:', JSON.stringify(guestData), '| guestEmail after join:', guestEmail);
+
+  // Fallback: re-query guests table directly if the FK join returned nothing
+  if (!guestEmail && booking.guest_id) {
+    console.log('[cancel-booking] guestEmail null after join — running fallback query for guest_id:', booking.guest_id);
+    const { data: directGuest, error: directGuestError } = await supabase
+      .from('guests')
+      .select('email, first_name, last_name')
+      .eq('id', booking.guest_id)
+      .single();
+    console.log('[cancel-booking] fallback query result — directGuest:', JSON.stringify(directGuest), '| error:', directGuestError?.message ?? null);
+    if (directGuest?.email) {
+      guestEmail = directGuest.email;
+      guestFirstName = directGuest.first_name || 'Guest';
+      guestFullName = `${directGuest.first_name || ''} ${directGuest.last_name || ''}`.trim() || 'A guest';
+    }
+  }
+  console.log('[cancel-booking] final guestEmail before email block:', guestEmail, '| resendKey set:', !!resendKey);
   const referenceNumber = booking.reference_number || booking.id?.slice(0, 8) || '';
-  const apartmentName = booking.apartment_name || 'the apartment';
+  const apartmentName = (booking.apartments as any)?.name || 'the apartment';
 
   // 2. Update booking status to cancelled
 const { error: updateError } = await supabase
@@ -79,8 +98,37 @@ const { error: updateError } = await supabase
 
   // 4. Send cancellation email to guest
   if (resendKey && guestEmail) {
+    console.log('[cancel-booking] sending cancellation email to guest:', guestEmail);
     try {
-      await fetch('https://api.resend.com/emails', {
+      const refundBlock = refundIssued
+        ? '<div style="margin:20px 0;padding:16px 20px;border:1px solid #E8E3DC;background:#F7F4EF;">' +
+          '<p style="font-size:12px;color:#2C2C2A;margin:0;line-height:1.6;">' +
+          '<span style="font-family:Georgia,serif;">Refund</span> &mdash; ' +
+          'A full refund of EUR ' + booking.total_price + ' has been issued to your original payment method. ' +
+          'Please allow 5&ndash;10 business days.' +
+          '</p></div>'
+        : '';
+
+      const guestHtml = emailWrap(
+        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your reservation has been cancelled.</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">We\'re sorry to see you go.</p>' +
+        bookingTable([
+          ['Reference',  '#' + referenceNumber],
+          ['Apartment',  apartmentName],
+          ['Check-in',   booking.check_in],
+          ['Check-out',  booking.check_out],
+          ['Guests',     String(booking.guest_count)],
+        ]) +
+        refundBlock +
+        annaMessage('I was so looking forward to hosting you. I completely understand that plans change, and I hope we will have the chance to meet in Helsinki on another occasion.') +
+        '<div style="text-align:center;margin:36px 0 8px;">' +
+        '<a href="https://anna-stays.fi" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">' +
+        'Browse Availability &rarr;' +
+        '</a></div>' +
+        annaSignature()
+      );
+
+      const guestEmailRes = await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,19 +138,26 @@ const { error: updateError } = await supabase
           from: "Anna's Stays <info@anna-stays.fi>",
           to: [guestEmail],
           subject: 'Reservation Cancelled — #' + referenceNumber + ' | Anna\'s Stays',
-          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;border-bottom:1px solid #B09B89;padding-bottom:10px;">Reservation Cancelled</h2><p>Dear ' + guestFirstName + ',</p><p>This email confirms that your reservation <strong>#' + referenceNumber + '</strong> at <strong>' + apartmentName + '</strong> has been cancelled.</p>' + (refundIssued ? '<p>A full refund of <strong>EUR ' + booking.total_price + '</strong> has been issued to your original payment method and should appear within 5–10 business days.</p>' : '') + '<div style="background-color:#F7F4EF;padding:20px;border-left:4px solid #B09B89;margin:20px 0;font-style:italic;">"I am so sorry to see your cancellation. I was really looking forward to hosting you in Helsinki! I completely understand that plans change, and I truly hope to have the chance to welcome you to one of my stays another time."<br><br>— Anna</div><p style="font-size:0.8rem;color:#7A756E;margin-top:30px;">If you have any questions, please reach out at info@anna-stays.fi</p></div>',
+          html: guestHtml,
         }),
       });
-      console.log('Cancellation email sent to ' + guestEmail);
+      const guestEmailData = await guestEmailRes.json().catch(() => null);
+      if (guestEmailRes.ok) {
+        console.log('[cancel-booking] guest cancellation email OK — Resend id:', guestEmailData?.id);
+      } else {
+        console.error('[cancel-booking] guest cancellation email REJECTED by Resend — status:', guestEmailRes.status, '| body:', JSON.stringify(guestEmailData));
+      }
     } catch (emailErr) {
-      console.error('Cancellation email failed (non-critical):', emailErr);
+      console.error('[cancel-booking] guest cancellation email THREW:', emailErr);
     }
+  } else {
+    console.warn('[cancel-booking] SKIPPING guest email — resendKey:', !!resendKey, '| guestEmail:', guestEmail);
   }
 
   // 5. Send host notification email
   if (resendKey) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
@@ -120,7 +175,7 @@ const { error: updateError } = await supabase
 
   // 6. Send ntfy to Anna
   try {
-    await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+    await fetch(process.env.NTFY_URL!, {
       method: 'POST',
       body: guestFullName + ' cancelled booking ' + referenceNumber + ' at ' + apartmentName + (refundIssued ? ' — EUR ' + booking.total_price + ' refunded via Stripe' : ' — no payment found, no refund issued'),
       headers: {

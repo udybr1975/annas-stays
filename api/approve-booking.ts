@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { emailWrap, manageButton, bookingTable, annaSignature, annaMessage } from './emailTemplate.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -22,7 +23,7 @@ export default async function handler(req: any, res: any) {
   // 1. Fetch booking + guest from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*)')
+    .select('*, guests(*), apartments(name)')
     .eq('id', bookingId)
     .single();
 
@@ -30,8 +31,8 @@ export default async function handler(req: any, res: any) {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (booking.status !== 'pending') {
-    return res.status(400).json({ error: 'Booking is not in pending state' });
+  if (booking.status !== 'pending' && booking.status !== 'awaiting_payment') {
+    return res.status(400).json({ error: 'Booking cannot be approved from its current state' });
   }
 
   const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
@@ -90,10 +91,34 @@ export default async function handler(req: any, res: any) {
     // 4. Send payment link email to guest
     if (resendKey) {
       try {
-        const guestFirstName = guest.first_name || 'Guest';
-        const aptName = booking.apartment_name || 'the apartment';
+        const aptName = (booking.apartments as any)?.name || 'the apartment';
+        const manageUrl = 'https://anna-stays.fi/manage-booking/' + booking.id + '?email=' + encodeURIComponent(guest.email);
 
-        await fetch('https://api.resend.com/emails', {
+        const guestHtml = emailWrap(
+          '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your request is approved.</h1>' +
+          '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">Complete your payment within 24 hours to confirm your stay.</p>' +
+          bookingTable([
+            ['Reference',  '#' + booking.reference_number],
+            ['Apartment',  aptName],
+            ['Check-in',   booking.check_in],
+            ['Check-out',  booking.check_out],
+            ['Guests',     String(booking.guest_count)],
+            ['Total',      'EUR ' + booking.total_price],
+          ]) +
+          annaMessage('I am so pleased to welcome you. Complete your payment to secure your dates — I cannot wait to host you in Helsinki.') +
+          '<div style="text-align:center;margin:36px 0 12px;">' +
+          '<a href="' + session.url + '" style="display:inline-block;padding:14px 36px;background:#3D4F3E;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">' +
+          'Complete Payment &rarr;' +
+          '</a>' +
+          '</div>' +
+          '<p style="text-align:center;font-size:11px;color:#7A756E;margin:8px 0 28px;">' +
+          'This link expires in 24 hours. &nbsp; <a href="' + session.url + '" style="color:#5C7A5C;text-decoration:underline;">Button not working? Click here.</a>' +
+          '</p>' +
+          manageButton(manageUrl) +
+          annaSignature()
+        );
+
+        await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -102,30 +127,14 @@ export default async function handler(req: any, res: any) {
           body: JSON.stringify({
             from: "Anna's Stays <info@anna-stays.fi>",
             to: [guest.email],
-            subject: 'Your Booking Request is Approved — Complete Payment | Anna\'s Stays',
-            html: `
-              <div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;">
-                <h2 style="font-weight:normal;">Great news, ${guestFirstName}!</h2>
-                <p>Your booking request for <strong>${aptName}</strong> has been approved.</p>
-                <p><strong>Reference:</strong> #${booking.reference_number}</p>
-                <p><strong>Check-in:</strong> ${booking.check_in}</p>
-                <p><strong>Check-out:</strong> ${booking.check_out}</p>
-                <p><strong>Guests:</strong> ${booking.guest_count}</p>
-                <p><strong>Total:</strong> EUR ${booking.total_price}</p>
-                <p>To confirm your stay, please complete your payment within <strong>24 hours</strong> using the link below. After 24 hours this link will expire and the dates will be released.</p>
-                <div style="text-align:center;margin:32px 0;">
-                  <a href="${session.url}" style="background:#3D4F3E;color:#ffffff;padding:16px 32px;text-decoration:none;font-family:sans-serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Complete Payment →</a>
-                </div>
-                <p style="font-size:12px;color:#7A756E;">If the button doesn't work, copy this link: ${session.url}</p>
-                <p style="font-style:italic;color:#5C7A5C;">- Anna Humalainen, Host</p>
-              </div>
-            `,
+            subject: 'Your Request is Approved — Complete Payment | Anna\'s Stays',
+            html: guestHtml,
           }),
         });
-console.log('Payment link email sent to ' + guest.email);
+        console.log('Payment link email sent to ' + guest.email);
 
         // Notification email to Anna
-        await fetch('https://api.resend.com/emails', {
+        await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
           body: JSON.stringify({
@@ -143,11 +152,11 @@ console.log('Payment link email sent to ' + guest.email);
 
     // 5. Send ntfy notification
     try {
-      await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+      await fetch(process.env.NTFY_URL!, {
         method: 'POST',
         body: 'Approved and payment link sent to ' + guest.first_name + ' ' + guest.last_name + ' | ' + booking.reference_number + ' | EUR ' + booking.total_price,
         headers: {
-          'Title': 'Booking Approved — Awaiting Payment',
+          'Title': 'Booking Approved - Awaiting Payment',
           'Priority': 'default',
           'Content-Type': 'text/plain',
         },

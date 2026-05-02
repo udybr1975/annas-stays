@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { emailWrap, annaSignature, annaMessage } from './emailTemplate.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
@@ -19,7 +20,7 @@ export default async function handler(req: any, res: any) {
   // 1. Fetch booking and guest from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*)')
+    .select('*, guests(*), apartments(name)')
     .eq('id', bookingId)
     .single();
 
@@ -38,7 +39,7 @@ export default async function handler(req: any, res: any) {
   const guestFirstName = guest?.first_name || 'Guest';
   const guestFullName = `${guest?.first_name || ''} ${guest?.last_name || ''}`.trim() || 'A guest';
   const referenceNumber = booking.reference_number || booking.id?.slice(0, 8) || '';
-  const apartmentName = booking.apartment_name || 'the apartment';
+  const apartmentName = (booking.apartments as any)?.name || 'the apartment';
 
   // 2. Update booking status to declined
   const { error: updateError } = await supabase
@@ -56,7 +57,20 @@ export default async function handler(req: any, res: any) {
   // 3. Send decline email to guest
   if (resendKey && guestEmail) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      const guestHtml = emailWrap(
+        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">We\'re sorry we can\'t accommodate you.</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">Thank you for your interest in staying at ' + apartmentName + '.</p>' +
+        '<p style="font-size:14px;color:#2C2C2A;line-height:1.7;margin:0 0 24px;">Unfortunately we are unable to host your request for the selected dates. We truly hope to welcome you to Helsinki another time.</p>' +
+        annaMessage('I am truly sorry I cannot host you this time. Helsinki will be here whenever you are ready — I hope to welcome you another time.') +
+        '<div style="text-align:center;margin:36px 0 8px;">' +
+        '<a href="https://anna-stays.fi" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">' +
+        'Browse Availability &rarr;' +
+        '</a>' +
+        '</div>' +
+        annaSignature()
+      );
+
+      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,7 +80,7 @@ export default async function handler(req: any, res: any) {
           from: "Anna's Stays <info@anna-stays.fi>",
           to: [guestEmail],
           subject: 'Regarding Your Reservation Request — #' + referenceNumber + ' | Anna\'s Stays',
-          html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;border-bottom:1px solid #B09B89;padding-bottom:10px;">Reservation Request Update</h2><p>Dear ' + guestFirstName + ',</p><p>Thank you for your interest in staying at <strong>' + apartmentName + '</strong>. Unfortunately we are unable to accommodate your request for the selected dates.</p><p>We hope to welcome you another time. Please feel free to check availability for other dates.</p><div style="background-color:#F7F4EF;padding:20px;border-left:4px solid #B09B89;margin:20px 0;font-style:italic;">"I am sorry I cannot host you this time. I truly hope we will have the chance to meet in Helsinki on another occasion."<br><br>— Anna</div><p style="font-size:0.8rem;color:#7A756E;margin-top:30px;">If you have any questions, please reach out at info@anna-stays.fi</p></div>',
+          html: guestHtml,
         }),
       });
       console.log('Decline email sent to ' + guestEmail);
@@ -78,7 +92,7 @@ export default async function handler(req: any, res: any) {
   // 4. Send host notification email
   if (resendKey) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
@@ -96,7 +110,7 @@ export default async function handler(req: any, res: any) {
 
   // 5. Send ntfy to Anna
   try {
-    await fetch('https://ntfy.sh/annas-stays-helsinki-99', {
+    await fetch(process.env.NTFY_URL!, {
       method: 'POST',
       body: 'Booking request declined: ' + guestFullName + ' | ' + referenceNumber + ' | ' + apartmentName,
       headers: {
