@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
 
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendKey = process.env.RESEND_API_KEY;
 
@@ -135,12 +135,11 @@ export default async function handler(req: any, res: any) {
         const manageUrl = 'https://anna-stays.fi/manage-booking/' + booking.id + '?email=' + encodeURIComponent(guest.email);
 
         const aptImages: string[] = aptRow?.images || [];
-        const aiSummary = await generateAptSummary(
-          apt?.name || '',
-          aptRow?.neighborhood || '',
-          aptDetails || [],
-          aptRow?.tags || [],
-        );
+        const aiSummary = await Promise.race([
+          generateAptSummary(apt?.name || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
+          new Promise<string>(resolve => setTimeout(() => resolve(''), 4000)),
+        ]);
+        console.log('Webhook Path A: aiSummary length:', aiSummary.length, '| resendKey set:', !!resendKey);
 
         // EMAIL 4 — Booking confirmed after payment link
         const guestHtml = emailWrap(
@@ -166,7 +165,7 @@ export default async function handler(req: any, res: any) {
           annaSignature()
         );
 
-        await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
+        const emailRes4 = await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
           body: JSON.stringify({
@@ -176,7 +175,8 @@ export default async function handler(req: any, res: any) {
             html: guestHtml,
           }),
         });
-        console.log('Confirmation email sent to ' + guest.email);
+        const emailRes4Body = await emailRes4.json().catch(() => null);
+        console.log('Webhook Path A: guest email status:', emailRes4.status, '| body:', JSON.stringify(emailRes4Body));
 
         // Host notification (plain, internal)
         await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
@@ -287,12 +287,11 @@ export default async function handler(req: any, res: any) {
       const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingData.id + '?email=' + encodeURIComponent(m.guestEmail);
 
       const aptImages: string[] = aptRow?.images || [];
-      const aiSummary = await generateAptSummary(
-        m.apartmentName || '',
-        aptRow?.neighborhood || '',
-        aptDetails || [],
-        aptRow?.tags || [],
-      );
+      const aiSummary = await Promise.race([
+        generateAptSummary(m.apartmentName || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
+        new Promise<string>(resolve => setTimeout(() => resolve(''), 4000)),
+      ]);
+      console.log('Webhook Path B: aiSummary length:', aiSummary.length, '| resendKey set:', !!resendKey);
 
       // EMAIL 1 — Instant booking confirmed
       const guestHtml = emailWrap(
@@ -318,7 +317,7 @@ export default async function handler(req: any, res: any) {
         annaSignature()
       );
 
-      await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
+      const emailRes1 = await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
         body: JSON.stringify({
@@ -328,7 +327,8 @@ export default async function handler(req: any, res: any) {
           html: guestHtml,
         }),
       });
-      console.log('Email sent to ' + m.guestEmail);
+      const emailRes1Body = await emailRes1.json().catch(() => null);
+      console.log('Webhook Path B: guest email status:', emailRes1.status, '| body:', JSON.stringify(emailRes1Body));
 
       // Host notification (plain, internal)
       await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
