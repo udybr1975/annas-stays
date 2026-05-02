@@ -35,12 +35,27 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Booking cannot be approved from its current state' });
   }
 
-  const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
+  let guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
+
+  // Fallback: re-query guests table directly if the FK join returned nothing
+  if (!guest?.email && booking.guest_id) {
+    const { data: directGuest } = await supabase
+      .from('guests')
+      .select('email, first_name, last_name')
+      .eq('id', booking.guest_id)
+      .single();
+    if (directGuest?.email) guest = directGuest;
+  }
+
   if (!guest?.email) {
     return res.status(400).json({ error: 'Guest email not found' });
   }
 
-  console.log('[approve-booking] supabaseUrl set:', !!supabaseUrl, '| stripeKey set:', !!stripeKey, '| bookingId:', bookingId);
+  console.log('[approve-booking] supabaseUrl set:', !!supabaseUrl, '| stripeKey set:', !!stripeKey, '| bookingId:', bookingId, '| guestEmail:', guest.email, '| totalPrice:', booking.total_price);
+
+  if (!booking.total_price || booking.total_price <= 0) {
+    return res.status(400).json({ error: 'Invalid booking total price' });
+  }
 
   try {
     // 2. Create a Stripe Checkout Session (payment link) that expires in 24 hours

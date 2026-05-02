@@ -124,24 +124,19 @@ export default async function handler(req: any, res: any) {
     const guest = Array.isArray(booking.guests) ? booking.guests[0] : booking.guests;
     const apt = booking.apartments as any;
 
+    // Fetch apartment details for email
+    const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
+      supabase.from('apartments').select('neighborhood, tags, images').eq('id', booking.apartment_id).single(),
+      supabase.from('apartment_details').select('category, content').eq('apartment_id', booking.apartment_id).eq('is_private', false),
+    ]);
+
+    const manageUrl = 'https://anna-stays.fi/manage-booking/' + booking.id + '?email=' + encodeURIComponent(guest?.email || '');
+    const aptImages: string[] = aptRow?.images || [];
+
+    // ── Step 1: Send emails immediately (no Gemini yet) ──────────────────────
     if (resendKey && guest?.email) {
       try {
-        // Fetch apartment details for confirmation email
-        const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
-          supabase.from('apartments').select('neighborhood, tags, images').eq('id', booking.apartment_id).single(),
-          supabase.from('apartment_details').select('category, content').eq('apartment_id', booking.apartment_id).eq('is_private', false),
-        ]);
-
-        const manageUrl = 'https://anna-stays.fi/manage-booking/' + booking.id + '?email=' + encodeURIComponent(guest.email);
-
-        const aptImages: string[] = aptRow?.images || [];
-        const aiSummary = await Promise.race([
-          generateAptSummary(apt?.name || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
-          new Promise<string>(resolve => setTimeout(() => resolve(''), 4000)),
-        ]);
-        console.log('Webhook Path A: aiSummary length:', aiSummary.length, '| resendKey set:', !!resendKey);
-
-        // EMAIL 4 — Booking confirmed after payment link
+        // EMAIL 4 — Booking confirmed after payment link (aiSummary fires after)
         const guestHtml = emailWrap(
           heroImage(aptImages[0] || '') +
           '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your booking is confirmed.</h1>' +
@@ -158,7 +153,6 @@ export default async function handler(req: any, res: any) {
             { name: apt?.name, neighborhood: aptRow?.neighborhood, tags: aptRow?.tags },
             aptDetails || [],
           ) +
-          aiSummary +
           annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
           entryCodesNote() +
           manageButton(manageUrl) +
@@ -178,7 +172,7 @@ export default async function handler(req: any, res: any) {
         const emailRes4Body = await emailRes4.json().catch(() => null);
         console.log('Webhook Path A: guest email status:', emailRes4.status, '| body:', JSON.stringify(emailRes4Body));
 
-        // Host notification (plain, internal)
+        // Host notification
         await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -189,9 +183,9 @@ export default async function handler(req: any, res: any) {
             html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Confirmed — Payment Received</h2><p><strong>Guest:</strong> ' + (guest.first_name || '') + ' ' + (guest.last_name || '') + '</p><p><strong>Email:</strong> <a href="mailto:' + guest.email + '">' + guest.email + '</a></p><p><strong>Reference:</strong> #' + booking.reference_number + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Guests:</strong> ' + booking.guest_count + '</p><p><strong>Total Paid:</strong> EUR ' + booking.total_price + '</p></div>',
           }),
         });
-        console.log('Notification email sent to info@anna-stays.fi');
+        console.log('Webhook Path A: host notification sent');
       } catch (emailErr) {
-        console.error('Email failed:', emailErr);
+        console.error('Webhook Path A: email failed:', emailErr);
       }
     }
 
@@ -208,6 +202,14 @@ export default async function handler(req: any, res: any) {
     } catch (ntfyErr) {
       console.error('ntfy failed:', ntfyErr);
     }
+
+    // ── Step 2: Gemini fires after emails — truly non-blocking ────────────────
+    void Promise.race([
+      generateAptSummary(apt?.name || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
+      new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
+    ]).then(summary => {
+      if (summary) console.log('Webhook Path A: Gemini summary generated (' + summary.length + ' chars)');
+    }).catch(() => {});
 
     return res.status(200).json({ received: true });
   }
@@ -276,24 +278,19 @@ export default async function handler(req: any, res: any) {
 
   console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
 
+  // Fetch apartment details for email
+  const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
+    supabase.from('apartments').select('neighborhood, tags, images').eq('id', m.apartmentId).single(),
+    supabase.from('apartment_details').select('category, content').eq('apartment_id', m.apartmentId).eq('is_private', false),
+  ]);
+
+  const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingData.id + '?email=' + encodeURIComponent(m.guestEmail);
+  const aptImages: string[] = aptRow?.images || [];
+
+  // ── Step 1: Send emails immediately (no Gemini yet) ────────────────────────
   if (resendKey) {
     try {
-      // Fetch apartment details for confirmation email
-      const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
-        supabase.from('apartments').select('neighborhood, tags, images').eq('id', m.apartmentId).single(),
-        supabase.from('apartment_details').select('category, content').eq('apartment_id', m.apartmentId).eq('is_private', false),
-      ]);
-
-      const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingData.id + '?email=' + encodeURIComponent(m.guestEmail);
-
-      const aptImages: string[] = aptRow?.images || [];
-      const aiSummary = await Promise.race([
-        generateAptSummary(m.apartmentName || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
-        new Promise<string>(resolve => setTimeout(() => resolve(''), 4000)),
-      ]);
-      console.log('Webhook Path B: aiSummary length:', aiSummary.length, '| resendKey set:', !!resendKey);
-
-      // EMAIL 1 — Instant booking confirmed
+      // EMAIL 1 — Instant booking confirmed (aiSummary fires after)
       const guestHtml = emailWrap(
         heroImage(aptImages[0] || '') +
         '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your booking is confirmed.</h1>' +
@@ -310,7 +307,6 @@ export default async function handler(req: any, res: any) {
           { name: m.apartmentName, neighborhood: aptRow?.neighborhood, tags: aptRow?.tags },
           aptDetails || [],
         ) +
-        aiSummary +
         annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
         entryCodesNote() +
         manageButton(manageUrl) +
@@ -330,7 +326,7 @@ export default async function handler(req: any, res: any) {
       const emailRes1Body = await emailRes1.json().catch(() => null);
       console.log('Webhook Path B: guest email status:', emailRes1.status, '| body:', JSON.stringify(emailRes1Body));
 
-      // Host notification (plain, internal)
+      // Host notification
       await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -341,9 +337,9 @@ export default async function handler(req: any, res: any) {
           html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">New Confirmed Booking</h2><p><strong>Guest:</strong> ' + m.guestFirstName + ' ' + m.guestLastName + '</p><p><strong>Email:</strong> <a href="mailto:' + m.guestEmail + '">' + m.guestEmail + '</a></p><p><strong>Apartment:</strong> ' + m.apartmentName + '</p><p><strong>Reference:</strong> #' + m.referenceNumber + '</p><p><strong>Check-in:</strong> ' + m.checkIn + '</p><p><strong>Check-out:</strong> ' + m.checkOut + '</p><p><strong>Guests:</strong> ' + m.guestCount + '</p><p><strong>Total Paid:</strong> EUR ' + m.totalPrice + '</p></div>',
         }),
       });
-      console.log('Notification email sent to info@anna-stays.fi');
+      console.log('Webhook Path B: host notification sent');
     } catch (emailErr) {
-      console.error('Email failed:', emailErr);
+      console.error('Webhook Path B: email failed:', emailErr);
     }
   }
 
@@ -360,6 +356,14 @@ export default async function handler(req: any, res: any) {
   } catch (ntfyErr) {
     console.error('ntfy failed:', ntfyErr);
   }
+
+  // ── Step 2: Gemini fires after emails — truly non-blocking ──────────────────
+  void Promise.race([
+    generateAptSummary(m.apartmentName || '', aptRow?.neighborhood || '', aptDetails || [], aptRow?.tags || []),
+    new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
+  ]).then(summary => {
+    if (summary) console.log('Webhook Path B: Gemini summary generated (' + summary.length + ' chars)');
+  }).catch(() => {});
 
   return res.status(200).json({ received: true });
 }
