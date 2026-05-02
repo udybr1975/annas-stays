@@ -24,6 +24,16 @@
 - Production credentials in Vercel dashboard
 - NTFY_URL and GEMINI_API_KEY must exist in both .env and Vercel
 
+## Environment Variable Rules
+- Server-side API files must NEVER use VITE_ prefixed environment variables
+- VITE_ variables are frontend-only and completely invisible to Vercel serverless functions
+- Any code written in the api/ folder must use these server-side variables:
+  - NEXT_PUBLIC_SUPABASE_URL (never VITE_SUPABASE_URL)
+  - RESEND_API_KEY (never VITE_RESEND_API_KEY)
+  - GEMINI_API_KEY (never VITE_GEMINI_API_KEY)
+  - SUPABASE_SERVICE_ROLE_KEY for all server-side Supabase operations
+- Before pushing any api/ file to GitHub, always grep for VITE_ and confirm zero matches
+
 ## Test Infrastructure (local only)
 - /tests/ — all test scripts, gitignored
 - /api/test/ — all test endpoints, gitignored
