@@ -227,64 +227,87 @@ export default async function handler(req: any, res: any) {
 
   const { data: existing } = await supabase
     .from('bookings')
-    .select('id')
+    .select('id, status')
     .eq('reference_number', m.referenceNumber)
     .maybeSingle();
 
+  let bookingId: string;
+
   if (existing) {
-    console.log('Webhook: ' + m.referenceNumber + ' already exists - skipping');
-    return res.status(200).json({ received: true, duplicate: true });
-  }
-
-  // Always insert a fresh guest row — email is no longer unique
-  const { data: newGuest, error: guestError } = await supabase
-    .from('guests')
-    .insert({
-      email: m.guestEmail.toLowerCase().trim(),
-      first_name: m.guestFirstName || '',
-      last_name: m.guestLastName || '',
-    })
-    .select('id')
-    .single();
-
-  if (guestError || !newGuest?.id) {
-    console.error('Webhook: Failed to save guest:', guestError?.message);
-    return res.status(500).send('Failed to save guest');
-  }
-
-  const { data: bookingData, error: bookingError } = await supabase
-    .from('bookings')
-    .insert({
-      apartment_id: m.apartmentId,
-      guest_id: newGuest.id,
-      check_in: m.checkIn,
-      check_out: m.checkOut,
-      total_price: parseFloat(m.totalPrice),
-      guest_count: parseInt(m.guestCount, 10),
-      status: 'confirmed',
-      reference_number: m.referenceNumber,
-      stripe_session_id: session.id,
-      stripe_payment_intent_id: session.payment_intent || null,
-      admin_needs_attention: true,
-      notes: m.message || null,
-    })
-    .select('id')
-    .single();
-
-  if (bookingError) {
-    if (bookingError.code === '23505' || bookingError.message?.includes('duplicate key')) {
-      console.log('Webhook: ' + m.referenceNumber + ' race condition — booking already saved by concurrent webhook, skipping');
+    if (existing.status === 'confirmed') {
+      console.log('Webhook: ' + m.referenceNumber + ' already confirmed - skipping');
       return res.status(200).json({ received: true, duplicate: true });
     }
-    console.error('Webhook: Failed to save booking:', bookingError?.message);
-    return res.status(500).send('Failed to save booking');
-  }
-  if (!bookingData?.id) {
-    console.error('Webhook: Booking insert returned no id');
-    return res.status(500).send('Failed to save booking');
-  }
+    // Pre-existing booking not yet confirmed — update it and proceed to send emails
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        status: 'confirmed',
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || null,
+        admin_needs_attention: true,
+      })
+      .eq('id', existing.id);
 
-  console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
+    if (updateError) {
+      console.error('Webhook: Failed to confirm pre-existing booking:', updateError.message);
+      return res.status(500).send('Failed to confirm booking');
+    }
+
+    console.log('Webhook: Pre-existing booking ' + m.referenceNumber + ' confirmed via payment');
+    bookingId = existing.id;
+  } else {
+    // Always insert a fresh guest row — email is no longer unique
+    const { data: newGuest, error: guestError } = await supabase
+      .from('guests')
+      .insert({
+        email: m.guestEmail.toLowerCase().trim(),
+        first_name: m.guestFirstName || '',
+        last_name: m.guestLastName || '',
+      })
+      .select('id')
+      .single();
+
+    if (guestError || !newGuest?.id) {
+      console.error('Webhook: Failed to save guest:', guestError?.message);
+      return res.status(500).send('Failed to save guest');
+    }
+
+    const { data: bookingData, error: bookingError } = await supabase
+      .from('bookings')
+      .insert({
+        apartment_id: m.apartmentId,
+        guest_id: newGuest.id,
+        check_in: m.checkIn,
+        check_out: m.checkOut,
+        total_price: parseFloat(m.totalPrice),
+        guest_count: parseInt(m.guestCount, 10),
+        status: 'confirmed',
+        reference_number: m.referenceNumber,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || null,
+        admin_needs_attention: true,
+        notes: m.message || null,
+      })
+      .select('id')
+      .single();
+
+    if (bookingError) {
+      if (bookingError.code === '23505' || bookingError.message?.includes('duplicate key')) {
+        console.log('Webhook: ' + m.referenceNumber + ' race condition — booking already saved by concurrent webhook, skipping');
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+      console.error('Webhook: Failed to save booking:', bookingError?.message);
+      return res.status(500).send('Failed to save booking');
+    }
+    if (!bookingData?.id) {
+      console.error('Webhook: Booking insert returned no id');
+      return res.status(500).send('Failed to save booking');
+    }
+
+    console.log('Webhook: Instant booking ' + m.referenceNumber + ' confirmed');
+    bookingId = bookingData.id;
+  }
 
   // Fetch apartment details for email
   const [{ data: aptRow }, { data: aptDetails }] = await Promise.all([
@@ -292,7 +315,7 @@ export default async function handler(req: any, res: any) {
     supabase.from('apartment_details').select('category, content').eq('apartment_id', m.apartmentId).eq('is_private', false),
   ]);
 
-  const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingData.id + '?email=' + encodeURIComponent(m.guestEmail);
+  const manageUrl = 'https://anna-stays.fi/manage-booking/' + bookingId + '?email=' + encodeURIComponent(m.guestEmail);
   const aptImages: string[] = aptRow?.images || [];
 
   // ── Step 1: Send emails immediately (no Gemini yet) ────────────────────────
