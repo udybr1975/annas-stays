@@ -271,8 +271,16 @@ export default async function handler(req: any, res: any) {
     .select('id')
     .single();
 
-  if (bookingError || !bookingData?.id) {
+  if (bookingError) {
+    if (bookingError.code === '23505' || bookingError.message?.includes('duplicate key')) {
+      console.log('Webhook: ' + m.referenceNumber + ' race condition — booking already saved by concurrent webhook, skipping');
+      return res.status(200).json({ received: true, duplicate: true });
+    }
     console.error('Webhook: Failed to save booking:', bookingError?.message);
+    return res.status(500).send('Failed to save booking');
+  }
+  if (!bookingData?.id) {
+    console.error('Webhook: Booking insert returned no id');
     return res.status(500).send('Failed to save booking');
   }
 
