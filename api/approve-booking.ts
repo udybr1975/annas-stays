@@ -27,7 +27,11 @@ export default async function handler(req: any, res: any) {
     .eq('id', bookingId)
     .single();
 
-  if (bookingError || !booking) {
+  if (bookingError) {
+    console.error('[approve-booking] Supabase error fetching booking:', bookingError.message);
+    return res.status(500).json({ error: 'Database error: ' + bookingError.message });
+  }
+  if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
