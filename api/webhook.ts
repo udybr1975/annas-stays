@@ -288,8 +288,10 @@ export default async function handler(req: any, res: any) {
   const aptImages: string[] = aptRow?.images || [];
 
   // ── Step 1: Send emails immediately (no Gemini yet) ────────────────────────
+  console.log('Webhook Path B: resendKey set:', !!resendKey, '| guestEmail:', m.guestEmail);
   if (resendKey) {
     try {
+      console.log('Webhook Path B: attempting guest email to', m.guestEmail);
       // EMAIL 1 — Instant booking confirmed (aiSummary fires after)
       const guestHtml = emailWrap(
         heroImage(aptImages[0] || '') +
@@ -327,6 +329,7 @@ export default async function handler(req: any, res: any) {
       console.log('Webhook Path B: guest email status:', emailRes1.status, '| body:', JSON.stringify(emailRes1Body));
 
       // Host notification
+      console.log('Webhook Path B: attempting host email to info@anna-stays.fi');
       await fetch((process.env.RESEND_API_URL ?? 'https://api.resend.com') + '/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + resendKey },
@@ -341,8 +344,11 @@ export default async function handler(req: any, res: any) {
     } catch (emailErr) {
       console.error('Webhook Path B: email failed:', emailErr);
     }
+  } else {
+    console.error('Webhook Path B: RESEND_API_KEY not set — skipping all emails');
   }
 
+  console.log('Webhook Path B: sending ntfy');
   try {
     await fetch(process.env.NTFY_URL!, {
       method: 'POST',
