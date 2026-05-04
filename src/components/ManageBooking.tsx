@@ -48,125 +48,68 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
     const sessionEmail = localStorage.getItem(`booking_auth_${id}`);
     const emailToVerify = (fastPassEmail || sessionEmail)?.toLowerCase().trim();
 
-    try {
-      const { data: bookingData } = await supabase
-        .from('bookings')
-        .select('apartment_id, apartments(name)')
-        .eq('id', id)
-        .single();
-      if (bookingData) {
-        const allListings = listings.length > 0 ? listings : LISTINGS;
-        const apt = allListings.find(l => String(l.id) === String(bookingData.apartment_id));
-        if (apt) setListing(apt);
-      }
-    } catch (e) {}
-
     if (emailToVerify) {
-      const verified = await performVerification(emailToVerify);
-      if (verified) {
+      const result = await performVerification(emailToVerify);
+      if (result.valid) {
         setIsVerified(true);
         localStorage.setItem(`booking_auth_${id}`, emailToVerify);
-        setLoading(false);
-        return;
       }
     }
     setLoading(false);
   };
 
-  const performVerification = async (email: string) => {
+  const performVerification = async (email: string): Promise<{ valid: boolean; errorMessage?: string; referenceNumber?: string }> => {
     try {
-      const { data: bookingData, error: bError } = await supabase
-        .from('bookings')
-        .select('id, guest_id, apartment_id, apartments(name)')
-        .eq('id', id)
-        .single();
-      if (bError || !bookingData) return false;
+      const response = await fetch('/api/verify-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: id, email: email.toLowerCase().trim() }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.valid) {
+        return {
+          valid: false,
+          errorMessage: result.error || 'Email address does not match this reservation.',
+          referenceNumber: result.referenceNumber,
+        };
+      }
+
+      const bookingData = result.booking;
+      const guestData = result.guest || (Array.isArray(bookingData.guests) ? bookingData.guests[0] : bookingData.guests);
+
+      setBooking(bookingData);
+      setGuest(guestData || null);
 
       const allListings = listings.length > 0 ? listings : LISTINGS;
-      const apt = allListings.find(l => String(l.id) === String(bookingData.apartment_id));
-      if (apt) setListing(apt);
+      const apt = allListings.find((l: any) => String(l.id) === String(bookingData.apartment_id));
+      if (apt) {
+        setListing(apt);
+      } else {
+        const { data: dbListing } = await supabase.from('apartments').select('*').eq('id', bookingData.apartment_id).single();
+        if (dbListing) setListing(dbListing);
+      }
 
-      const { data: guestData, error: gError } = await supabase
-        .from('guests')
-        .select('email')
-        .eq('id', bookingData.guest_id)
-        .ilike('email', email.trim())
-        .single();
-      if (gError || !guestData) return false;
-
-      await fetchBookingData();
-      return true;
-    } catch (err) {
-      return false;
+      return { valid: true };
+    } catch {
+      return { valid: false, errorMessage: 'Unable to verify. Please try again.' };
     }
   };
 
   const handleManualVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setVerifyError(null);
-    const verified = await performVerification(verifyEmail);
-    if (verified) {
+    const result = await performVerification(verifyEmail);
+    if (result.valid) {
       setIsVerified(true);
       localStorage.setItem(`booking_auth_${id}`, verifyEmail.toLowerCase().trim());
     } else {
-      try {
-        const { data: bookingRef } = await supabase
-          .from('bookings')
-          .select('reference_number')
-          .eq('id', id)
-          .single();
-        if (bookingRef) {
-          setVerifyError(`This email does not match the one used for booking ${bookingRef.reference_number}`);
-        } else {
-          setVerifyError("Email address does not match this reservation.");
-        }
-      } catch (err) {
-        setVerifyError("Email address does not match this reservation.");
-      }
-    }
-  };
-
-  const fetchBookingData = async () => {
-    setError(null);
-    try {
-      const { data: bData, error: bErr } = await supabase
-        .from('bookings')
-        .select('*, guests(*), apartments(name)')
-        .eq('id', id)
-        .single();
-      if (bErr) throw bErr;
-      if (!bData) throw new Error("Booking not found");
-
-      if (bData.status === 'cancelled' || bData.status === 'declined') {
-        throw new Error("This reservation is no longer accessible.");
-      }
-
-      let guestData = bData.guests;
-      if (!guestData && bData.guest_id) {
-        const { data: gData, error: gErr } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('id', bData.guest_id)
-          .single();
-        if (!gErr) guestData = gData;
-      }
-
-      setBooking(bData);
-      setGuest(guestData);
-
-      const allListings = listings.length > 0 ? listings : LISTINGS;
-      const localListing = allListings.find(l => String(l.id) === String(bData.apartment_id));
-      if (localListing) {
-        setListing(localListing);
-      } else {
-        const { data: dbListing } = await supabase.from('apartments').select('*').eq('id', bData.apartment_id).single();
-        if (dbListing) setListing(dbListing);
-      }
-    } catch (err: any) {
-      console.error("Error fetching booking:", err);
-      setError(err.message || "Could not load booking details.");
-    } finally {
-      setLoading(false);
+      setVerifyError(
+        result.referenceNumber
+          ? `This email does not match the one used for booking ${result.referenceNumber}`
+          : (result.errorMessage || 'Email address does not match this reservation.')
+      );
     }
   };
 

@@ -9,6 +9,7 @@ import cancelBookingHandler from "./api/cancel-booking.js";
 import approveBookingHandler from "./api/approve-booking.js";
 import declineBookingHandler from "./api/decline-booking.js";
 import notifyHandler from "./api/notify.js";
+import verifyBookingHandler from "./api/verify-booking.js";
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ async function startServer() {
   app.post("/api/approve-booking", approveBookingHandler);
   app.post("/api/decline-booking", declineBookingHandler);
   app.post("/api/notify", notifyHandler);
+  app.post("/api/verify-booking", verifyBookingHandler);
 
   // ─── Stripe checkout session ─────────────────────────────────────────────
   app.post("/api/create-checkout-session", async (req, res) => {
