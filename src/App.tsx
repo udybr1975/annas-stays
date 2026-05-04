@@ -222,7 +222,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
       setContactSent(true);
       setContactForm({ firstName: "", lastName: "", email: "", apartment: "", checkIn: "", checkOut: "", message: "" });
     } catch (err) {
-      setContactError("Something went wrong. Please email us directly at hello@annasstays.fi");
+      setContactError("Something went wrong. Please email us directly at info@anna-stays.fi");
     } finally {
       setContactSubmitting(false);
     }
@@ -521,9 +521,9 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
             <h2 className="font-serif text-[2.2rem] md:text-[2.8rem] font-light leading-[1.2]">Ready to book<br />your stay in<br /><em className="text-clay italic">Helsinki?</em></h2>
             <p className="text-[0.86rem] text-muted leading-loose mt-5 font-light">Send us a message and we'll get back to you within the hour.</p>
             <div className="mt-8 flex flex-col gap-2.5">
-              <a href="mailto:hello@annasstays.fi" className="flex items-center gap-2.5 text-[0.85rem] text-charcoal no-underline font-sans">
+              <a href="mailto:info@anna-stays.fi" className="flex items-center gap-2.5 text-[0.85rem] text-charcoal no-underline font-sans">
                 <span className="w-8 h-8 bg-cream flex items-center justify-center text-sm"><Mail size={14} /></span>
-                hello@annasstays.fi
+                info@anna-stays.fi
               </a>
               <a href="https://wa.me/358442400228" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 text-[0.85rem] text-charcoal no-underline font-sans">
                 <span className="w-8 h-8 bg-[#25D366] flex items-center justify-center text-sm text-white"><Phone size={14} /></span>
@@ -634,7 +634,7 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
           ))}
         </div>
         <div className="text-center md:text-right">
-          <span className="text-[0.78rem] text-birch block mb-1">hello@annasstays.fi</span>
+          <span className="text-[0.78rem] text-birch block mb-1">info@anna-stays.fi</span>
           <span className="text-[0.63rem] text-muted">© 2026 Anna's Stays · Helsinki, Finland</span>
         </div>
       </motion.footer>

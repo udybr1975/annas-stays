@@ -449,8 +449,8 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
                 <div className="pt-6 border-t border-mist">
                   <p className="text-[0.65rem] uppercase tracking-widest text-muted font-sans mb-4">Need help?</p>
                   <div className="space-y-3">
-                    <a href="mailto:hello@annasstays.fi" className="flex items-center gap-3 text-xs text-muted no-underline hover:text-charcoal transition-colors">
-                      <Mail size={14} className="text-clay" /> hello@annasstays.fi
+                    <a href="mailto:info@anna-stays.fi" className="flex items-center gap-3 text-xs text-muted no-underline hover:text-charcoal transition-colors">
+                      <Mail size={14} className="text-clay" /> info@anna-stays.fi
                     </a>
                     <a href="tel:+358442400228" className="flex items-center gap-3 text-xs text-muted no-underline hover:text-charcoal transition-colors">
                       <Phone size={14} className="text-clay" /> +358 44 2400 228
@@ -503,7 +503,7 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
                   </p>
                 ) : (
                   <p className="text-xs text-muted mb-8 font-sans leading-relaxed">
-                    If you paid for this booking, please contact us at hello@annasstays.fi and we will process your refund manually.
+                    If you paid for this booking, please contact us at info@anna-stays.fi and we will process your refund manually.
                   </p>
                 )}
                 <Link

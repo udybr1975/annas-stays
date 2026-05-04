@@ -108,8 +108,8 @@ export default function BookingSuccess() {
           <div className="mb-8 p-5 border border-mist/30 bg-warm-white">
             <p className="text-[0.6rem] tracking-[0.2em] uppercase text-muted font-sans mb-4 text-center">Need help?</p>
             <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-10">
-              <a href="mailto:hello@annasstays.fi" className="flex items-center gap-2 text-xs text-muted no-underline hover:text-charcoal transition-colors">
-                <Mail size={14} className="text-clay" /> hello@annasstays.fi
+              <a href="mailto:info@anna-stays.fi" className="flex items-center gap-2 text-xs text-muted no-underline hover:text-charcoal transition-colors">
+                <Mail size={14} className="text-clay" /> info@anna-stays.fi
               </a>
               <a href="https://wa.me/358442400228" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-muted no-underline hover:text-charcoal transition-colors">
                 <Phone size={14} className="text-clay" /> +358 44 240 0228
