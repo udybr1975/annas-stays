@@ -38,3 +38,42 @@
 - /tests/ — all test scripts, gitignored
 - /api/test/ — all test endpoints, gitignored
 - 5 services run simultaneously for testing
+
+## Testing Rules
+
+### After every code change:
+1. Run `npx tsx tests/run-booking-test.ts`
+2. All 11 steps must pass
+3. Never push to GitHub if any step fails
+
+### Before testing production (anna-stays.fi):
+1. Stop the Stripe CLI window (Ctrl+C)
+2. Close all local service windows
+3. Never have local Stripe CLI running while testing production
+4. Local Stripe CLI and production webhook compete for the same Stripe events — the local server creates the booking first (lower latency), then the production webhook finds it already confirmed and skips emails
+
+### After testing production:
+1. Restart local services with: `powershell -ExecutionPolicy Bypass -File tests\dev-start.ps1`
+2. Update STRIPE_WEBHOOK_SECRET in .env with the new whsec_ value from the Stripe CLI window
+3. Restart the app window
+
+## Email Flow Impact Assessment
+After every code change, Claude must assess and announce which email scenarios could be affected:
+
+Scenarios to check:
+1. Instant booking → guest confirmation email + host notification + ntfy
+2. Booking request → guest acknowledgement email + host notification + ntfy
+3. Approve booking → guest payment link email + host notification + ntfy
+4. Payment confirmed (via payment link) → guest confirmation email + host notification + ntfy
+5. Decline booking → guest decline email + host notification + ntfy
+6. Cancel booking → guest cancellation email + host notification + ntfy
+7. Host message to guest → guest email
+8. Guest message to host → host ntfy
+
+Format for announcement after each change:
+```
+EMAIL FLOW IMPACT:
+- Scenarios affected: [list or 'none']
+- Risk level: low / medium / high
+- Recommendation: run automated test / manual test scenario X / no action needed
+```
