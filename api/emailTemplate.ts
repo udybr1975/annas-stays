@@ -72,6 +72,18 @@ export function annaSignature(): string {
   );
 }
 
+// "This Week in Helsinki" button — links back to the site with the events popup open.
+export function helsinkiButton(): string {
+  return (
+    '<div style="text-align:center;margin:8px 0 8px;">' +
+    '<a href="https://anna-stays.fi/?openHelsinki=true" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;' +
+    'font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">' +
+    'This Week in Helsinki &rarr;' +
+    '</a>' +
+    '</div>'
+  );
+}
+
 // Full-bleed hero image placed first in the email body (cancels 40px body padding).
 export function heroImage(url: string): string {
   if (!url) return '';

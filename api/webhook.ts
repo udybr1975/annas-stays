@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { emailWrap, manageButton, bookingTable, apartmentBlock, entryCodesNote, annaSignature, heroImage, annaMessage } from './emailTemplate.js';
+import { emailWrap, manageButton, helsinkiButton, bookingTable, apartmentBlock, entryCodesNote, annaSignature, heroImage, annaMessage } from './emailTemplate.js';
 
 async function generateAptSummary(
   name: string,
@@ -156,6 +156,7 @@ export default async function handler(req: any, res: any) {
           annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
           entryCodesNote() +
           manageButton(manageUrl) +
+          helsinkiButton() +
           annaSignature()
         );
 
@@ -343,6 +344,7 @@ export default async function handler(req: any, res: any) {
         annaMessage('Helsinki is waiting for you. I have personally made sure everything is perfect for your stay — if there is anything you need before you arrive, do not hesitate to reach out.') +
         entryCodesNote() +
         manageButton(manageUrl) +
+        helsinkiButton() +
         annaSignature()
       );
 

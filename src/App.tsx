@@ -170,6 +170,16 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('openHelsinki') === 'true') {
+      setShowEvents(true);
+      params.delete('openHelsinki');
+      const newSearch = params.toString();
+      window.history.replaceState(null, '', newSearch ? '?' + newSearch : window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
     const handler = () => {
       const y = window.scrollY + 120;
       const order = ["stays", "guide", "extras", "about", "reviews", "faq", "contact"];
