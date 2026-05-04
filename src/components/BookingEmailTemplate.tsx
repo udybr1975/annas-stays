@@ -28,16 +28,16 @@ export default function BookingEmailTemplate({ booking, listing, guest, onClose,
 
         {/* Header Image */}
         <div className="h-[250px] relative overflow-hidden">
-          <img 
-            src={resolveImageUrl(listing.imgs?.[0])} 
-            alt={listing.name} 
+          <img
+            src={resolveImageUrl(listing?.imgs?.[0])}
+            alt={listing?.name ?? ''}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 to-transparent flex items-end p-8">
             <div>
               <p className="text-[0.65rem] tracking-[0.3em] uppercase text-birch mb-1 font-sans">Your Itinerary</p>
-              <h1 className="font-serif text-3xl md:text-4xl text-white font-light">{listing.name}</h1>
+              <h1 className="font-serif text-3xl md:text-4xl text-white font-light">{listing?.name}</h1>
             </div>
           </div>
         </div>
@@ -47,23 +47,23 @@ export default function BookingEmailTemplate({ booking, listing, guest, onClose,
           <div className="bg-[#FAF9F6] p-8 border border-mist/50 shadow-sm mb-10 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-clay/20" />
             <p className="font-serif text-xl italic text-charcoal mb-6 leading-relaxed">
-              Dear {guest.first_name},
+              Dear {guest?.first_name},
             </p>
             <p className="font-serif text-[1.05rem] text-muted leading-loose mb-8 italic">
               {booking.status === 'pending' ? (
                 <>
-                  Thank you for your interest in <span className="text-charcoal font-medium not-italic">{listing.name}</span>. 
+                  Thank you for your interest in <span className="text-charcoal font-medium not-italic">{listing?.name}</span>.
                   This property requires host approval to ensure the best possible experience for our guests. 
                   We have received your request for <span className="text-charcoal font-medium not-italic">{booking.check_in}</span> to <span className="text-charcoal font-medium not-italic">{booking.check_out}</span> and are currently reviewing it. 
                   We appreciate your patience and will notify you as soon as the status is updated.
                 </>
               ) : (
                 <>
-                  {booking.guest_count === 2 
-                    ? "I'm so glad both of you chose my studio for your stay." 
+                  {booking.guest_count === 2
+                    ? "I'm so glad both of you chose my studio for your stay."
                     : "I am so thrilled you'll be staying with us at "
                   }
-                  <span className="text-charcoal font-medium not-italic">{listing.name}</span>. 
+                  <span className="text-charcoal font-medium not-italic">{listing?.name}</span>.
                   Helsinki is a magical city, and we've prepared everything to make your visit truly special. 
                   We'll send your personal entry codes 24 hours before you arrive.
                 </>
@@ -99,7 +99,7 @@ export default function BookingEmailTemplate({ booking, listing, guest, onClose,
                   <MapPin className="text-clay shrink-0 mt-0.5" size={16} />
                   <div>
                     <p className="text-[0.65rem] uppercase tracking-widest text-muted font-sans">Location</p>
-                    <p className="text-sm font-serif">{listing.neigh}, Helsinki</p>
+                    <p className="text-sm font-serif">{listing?.neigh ? `${listing.neigh}, Helsinki` : 'Helsinki'}</p>
                   </div>
                 </div>
               </div>

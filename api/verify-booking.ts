@@ -19,7 +19,7 @@ export default async function handler(req: any, res: any) {
 
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*), apartments(name)')
+    .select('*, guests(*), apartments(*)')
     .eq('id', bookingId)
     .single();
 

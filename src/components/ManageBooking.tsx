@@ -87,8 +87,13 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
       if (apt) {
         setListing(apt);
       } else {
-        const { data: dbListing } = await supabase.from('apartments').select('*').eq('id', bookingData.apartment_id).single();
-        if (dbListing) setListing(dbListing);
+        const aptFromBooking = bookingData.apartments;
+        if (aptFromBooking && typeof aptFromBooking === 'object' && !Array.isArray(aptFromBooking)) {
+          setListing(aptFromBooking);
+        } else {
+          const { data: dbListing } = await supabase.from('apartments').select('*').eq('id', bookingData.apartment_id).single();
+          if (dbListing) setListing(dbListing);
+        }
       }
 
       return { valid: true };
