@@ -34,14 +34,22 @@ export default async function handler(req: any, res: any) {
   const neighbourhood = apartment?.neighborhood || 'Helsinki';
   const checkIn = booking.check_in || '';
 
-  const prompt = `Write an authentic first-person Instagram caption for ${guestFirstName}, a guest who just stayed at "${apartmentName}" in ${neighbourhood}, Helsinki (check-in: ${checkIn}).
-Requirements:
-- Sound like a real traveler writing to their followers, not a marketing message
-- Warm, personal, and genuine — mention a specific detail about the stay
-- Under 150 words total
-- The second-to-last line must be: @annas_stays
-- The very last line must be exactly: #Helsinki #Finland #VisitFinland #HelsinkiLife #BoutiqueStay #TravelScandinavia
-Return only the caption text, nothing else.`;
+  const prompt =
+    'You are a real guest who just had a wonderful stay in Helsinki. ' +
+    'Write a short authentic Instagram caption about the experience. ' +
+    'Use this context only for inspiration — do not mention it explicitly:\n' +
+    '- Neighbourhood: ' + neighbourhood + '\n' +
+    '- Check-in date: ' + checkIn + '\n\n' +
+    'Rules:\n' +
+    '- Maximum 2 short sentences. Clean and understated.\n' +
+    '- Write about the feeling of the stay or Helsinki — not the apartment details\n' +
+    '- Sound like a real traveller, not a marketing message\n' +
+    '- No apartment name, no host name, no specific room details\n' +
+    '- No emojis\n' +
+    '- No hashtags in the sentences\n' +
+    '- Then on a new line: @annas_stays\n' +
+    '- Then on a new line: #Helsinki #Finland #VisitFinland #HelsinkiLife #BoutiqueStay #TravelScandinavia\n' +
+    '- Do not mention prices or refunds';
 
   let caption = '';
   let lastError = '';
