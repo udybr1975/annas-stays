@@ -34,6 +34,7 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
   const [caption, setCaption] = useState('');
   const [captionCopied, setCaptionCopied] = useState(false);
   const [ugcSubmission, setUgcSubmission] = useState<any>(null);
+  const [ugcPostUrl, setUgcPostUrl] = useState('');
   const [ugcSubmitting, setUgcSubmitting] = useState(false);
   const [ugcSubmitted, setUgcSubmitted] = useState(false);
   const [ugcError, setUgcError] = useState<string | null>(null);
@@ -281,20 +282,19 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
     } catch {}
   };
 
-  const handleSubmitUgc = async (file: File) => {
+  const handleSubmitUgcUrl = async () => {
+    const trimmed = ugcPostUrl.trim();
+    if (!trimmed.startsWith('https://www.instagram.com') && !trimmed.startsWith('https://instagram.com')) {
+      setUgcError('Please paste a valid Instagram link (must start with instagram.com)');
+      return;
+    }
     setUgcSubmitting(true);
     setUgcError(null);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
       const res = await fetch('/api/request-ugc-refund', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking?.id, screenshotBase64: base64, screenshotMimeType: file.type }),
+        body: JSON.stringify({ bookingId: booking?.id, postUrl: trimmed }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to submit request');
@@ -603,30 +603,35 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
                             Your refund request is pending review. Anna will process it shortly.
                           </div>
                         ) : !hasCheckedIn24hAgo ? (
-                          <p className="text-[0.65rem] text-muted italic">The upload button will appear 24 hours after check-in.</p>
+                          <p className="text-[0.65rem] text-muted italic">The link field will appear 24 hours after check-in.</p>
                         ) : (
                           <div>
-                            <p className="text-xs text-muted mb-3">Upload a screenshot of your post showing <strong>@annas_stays</strong>.</p>
-                            <label
-                              className="flex flex-col items-center justify-center p-4 border-2 border-dashed cursor-pointer transition-colors"
+                            <div className="mb-3 p-3 flex gap-2 items-start" style={{ background: '#fffbeb', border: '1px solid #f59e0b' }}>
+                              <AlertCircle size={14} className="shrink-0 mt-0.5" style={{ color: '#b45309' }} />
+                              <div>
+                                <p className="text-[0.7rem] font-bold leading-snug" style={{ color: '#92400e' }}>Act fast — Instagram stories disappear after 24 hours.</p>
+                                <p className="text-[0.65rem] mt-0.5 leading-relaxed" style={{ color: '#92400e' }}>To qualify for your refund, paste your post link below before your story expires. Expired links will not be accepted.</p>
+                              </div>
+                            </div>
+                            <label className="block text-[0.6rem] uppercase tracking-widest text-muted font-bold mb-1.5">Your Instagram Post Link</label>
+                            <input
+                              type="url"
+                              placeholder="https://www.instagram.com/p/..."
+                              value={ugcPostUrl}
+                              onChange={(e) => { setUgcPostUrl(e.target.value); setUgcError(null); }}
+                              className="w-full bg-white border p-3 text-xs outline-none transition-colors mb-2"
                               style={{ borderColor: '#d8b4fe' }}
+                              disabled={ugcSubmitting}
+                            />
+                            <button
+                              onClick={handleSubmitUgcUrl}
+                              disabled={!ugcPostUrl.trim() || ugcSubmitting}
+                              className="w-full p-3 text-white text-[0.65rem] tracking-widest uppercase font-sans flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                              style={{ background: 'linear-gradient(135deg,#9333ea,#ec4899,#f97316)' }}
                             >
-                              {ugcSubmitting ? (
-                                <RefreshCw size={16} className="animate-spin" style={{ color: '#9333ea' }} />
-                              ) : (
-                                <>
-                                  <span className="text-[0.65rem] uppercase tracking-widest font-bold mb-1" style={{ color: '#9333ea' }}>Request My Refund</span>
-                                  <span className="text-[0.6rem] text-muted text-center">Upload screenshot of your post tagging @annas_stays</span>
-                                </>
-                              )}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                disabled={ugcSubmitting}
-                                onChange={(e) => { if (e.target.files?.[0]) handleSubmitUgc(e.target.files[0]); }}
-                              />
-                            </label>
+                              {ugcSubmitting && <RefreshCw size={12} className="animate-spin" />}
+                              {ugcSubmitting ? 'Submitting...' : 'Submit for Refund'}
+                            </button>
                             {ugcError && (
                               <p className="mt-2 text-xs text-clay">{ugcError}</p>
                             )}

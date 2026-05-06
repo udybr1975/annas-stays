@@ -11,10 +11,13 @@ export default async function handler(req: any, res: any) {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const { bookingId, screenshotBase64, screenshotMimeType } = req.body;
+  const { bookingId, postUrl } = req.body;
 
-  if (!bookingId || !screenshotBase64 || !screenshotMimeType) {
+  if (!bookingId || !postUrl) {
     return res.status(400).json({ error: 'Missing required fields' });
+  }
+  if (typeof postUrl !== 'string' || !postUrl.startsWith('https://')) {
+    return res.status(400).json({ error: 'postUrl must start with https://' });
   }
 
   // 1. Verify booking exists and is confirmed
@@ -43,34 +46,17 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'A refund request already exists for this booking' });
   }
 
-  // 3. Upload screenshot to Supabase Storage
-  const ext = screenshotMimeType === 'image/png' ? 'png'
-    : screenshotMimeType === 'image/webp' ? 'webp'
-    : 'jpg';
-  const filename = `ugc-${bookingId}-${Date.now()}.${ext}`;
-  const buffer = Buffer.from(screenshotBase64, 'base64');
-
-  const { error: uploadError } = await supabase.storage
-    .from('ugc-screenshots')
-    .upload(filename, buffer, { contentType: screenshotMimeType, upsert: false });
-
-  if (uploadError) {
-    console.error('[request-ugc-refund] storage upload error:', uploadError.message);
-    return res.status(500).json({ error: 'Failed to upload screenshot: ' + uploadError.message });
-  }
-
-  const { data: { publicUrl } } = supabase.storage.from('ugc-screenshots').getPublicUrl(filename);
-
-  // 4. Calculate refund: min(total_price * 0.1, 30), rounded to 2 decimal places
+  // 3. Calculate refund: min(total_price * 0.1, 30), rounded to 2 decimal places
   const refundAmount = Math.round(Math.min(booking.total_price * 0.1, 30) * 100) / 100;
 
-  // 5. Insert ugc_submissions row
+  // 4. Insert ugc_submissions row
   const { data: submission, error: insertError } = await supabase
     .from('ugc_submissions')
     .insert({
       booking_id: bookingId,
       guest_id: booking.guest_id || null,
-      screenshot_url: publicUrl,
+      post_url: postUrl,
+      screenshot_url: null,
       status: 'pending',
       refund_amount: refundAmount,
     })
@@ -82,7 +68,7 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Failed to save submission: ' + insertError.message });
   }
 
-  // 6. Send ntfy to Anna
+  // 5. Send ntfy to Anna
   try {
     await fetch(process.env.NTFY_URL!, {
       method: 'POST',
