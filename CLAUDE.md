@@ -1,3 +1,9 @@
+## Branch Strategy
+- **main** → deploys to anna-stays.fi (PRODUCTION — never develop directly here)
+- **staging** → deploys to staging.anna-stays.fi (all new features built here first)
+- Merge staging → main only after 11/11 test passes and feature is manually verified on staging
+- Use tests/promote-to-production.ps1 to merge safely
+
 # Anna Stays — Project Context
 
 ## App
