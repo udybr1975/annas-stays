@@ -30,6 +30,14 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
   const [sendingReply, setSendingReply] = useState(false);
   const [replySent, setReplySent] = useState(false);
 
+  const [generatingCaption, setGeneratingCaption] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [captionCopied, setCaptionCopied] = useState(false);
+  const [ugcSubmission, setUgcSubmission] = useState<any>(null);
+  const [ugcSubmitting, setUgcSubmitting] = useState(false);
+  const [ugcSubmitted, setUgcSubmitted] = useState(false);
+  const [ugcError, setUgcError] = useState<string | null>(null);
+
   const [isVerified, setIsVerified] = useState(false);
   const [verifyEmail, setVerifyEmail] = useState("");
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -95,6 +103,15 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
           if (dbListing) setListing(dbListing);
         }
       }
+
+      // Non-blocking: load any existing UGC submission for this booking
+      supabase
+        .from('ugc_submissions')
+        .select('*')
+        .eq('booking_id', id)
+        .neq('status', 'rejected')
+        .maybeSingle()
+        .then(({ data }) => { if (data) setUgcSubmission(data); });
 
       return { valid: true };
     } catch {
@@ -233,6 +250,63 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
     }
   };
 
+  const handleGenerateCaption = async () => {
+    setGeneratingCaption(true);
+    try {
+      const res = await fetch('/api/instagram-caption', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate caption');
+      setCaption(data.caption);
+      try {
+        await navigator.clipboard.writeText(data.caption);
+        setCaptionCopied(true);
+        setTimeout(() => setCaptionCopied(false), 3000);
+      } catch {}
+    } catch (err: any) {
+      alert('Could not generate caption: ' + err.message);
+    } finally {
+      setGeneratingCaption(false);
+    }
+  };
+
+  const handleCopyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCaptionCopied(true);
+      setTimeout(() => setCaptionCopied(false), 3000);
+    } catch {}
+  };
+
+  const handleSubmitUgc = async (file: File) => {
+    setUgcSubmitting(true);
+    setUgcError(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/request-ugc-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking?.id, screenshotBase64: base64, screenshotMimeType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit request');
+      setUgcSubmitted(true);
+      setUgcSubmission({ status: 'pending', refund_amount: data.refundAmount });
+    } catch (err: any) {
+      setUgcError(err.message || 'Failed to submit. Please try again.');
+    } finally {
+      setUgcSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-warm-white flex items-center justify-center">
@@ -305,6 +379,7 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
   const now = new Date();
   const diffHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
   const canCancel = diffHours > 48 && booking.status !== 'cancelled';
+  const hasCheckedIn24hAgo = diffHours <= -24;
   const guestFirstName = guest?.first_name || guest?.name || 'Guest';
 
   return (
@@ -457,6 +532,110 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
                     </a>
                   </div>
                 </div>
+
+                {booking.status === 'confirmed' && (
+                  <div className="pt-6 border-t border-mist">
+                    <div style={{ background: 'linear-gradient(135deg,#f9f0ff 0%,#fff0f6 50%,#fff8f0 100%)', border: '1px solid #e9d5ff' }} className="p-5">
+                      <p className="text-[0.65rem] uppercase tracking-[0.15em] font-sans font-bold mb-1" style={{ color: '#9333ea' }}>Share Your Stay</p>
+                      <p className="text-xs text-muted leading-relaxed mb-5">
+                        Post on Instagram, tag <strong>@annas_stays</strong>, and receive a <strong>10% refund</strong> (up to EUR 30) as a thank-you from Anna.
+                      </p>
+
+                      {/* Step 1 — Caption */}
+                      <div className="mb-5">
+                        <p className="text-[0.6rem] uppercase tracking-widest font-bold text-charcoal mb-2">Step 1 — Generate Caption</p>
+                        {!caption ? (
+                          <button
+                            onClick={handleGenerateCaption}
+                            disabled={generatingCaption}
+                            className="w-full p-3 text-white text-[0.65rem] tracking-widest uppercase font-sans flex items-center justify-center gap-2 transition-all disabled:opacity-70"
+                            style={{ background: 'linear-gradient(135deg,#9333ea,#ec4899,#f97316)' }}
+                          >
+                            {generatingCaption && <RefreshCw size={12} className="animate-spin" />}
+                            {generatingCaption ? 'Generating...' : 'Generate My Caption'}
+                          </button>
+                        ) : (
+                          <div>
+                            <div className="bg-white p-3 mb-3 text-xs leading-relaxed whitespace-pre-wrap text-charcoal" style={{ border: '1px solid #e9d5ff' }}>
+                              {caption}
+                            </div>
+                            <div className="flex gap-2 mb-2">
+                              <button
+                                onClick={handleCopyCaption}
+                                className="flex-1 p-2.5 text-[0.6rem] tracking-widest uppercase font-sans border transition-all flex items-center justify-center gap-1"
+                                style={captionCopied ? { borderColor: '#22c55e', color: '#22c55e' } : { borderColor: '#d8b4fe', color: '#9333ea' }}
+                              >
+                                {captionCopied ? <><Check size={10} /> Copied!</> : 'Copy Caption'}
+                              </button>
+                              <a
+                                href="instagram://camera"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  window.location.href = 'instagram://camera';
+                                  setTimeout(() => window.open('https://www.instagram.com', '_blank'), 500);
+                                }}
+                                className="flex-1 p-2.5 text-[0.6rem] tracking-widest uppercase font-sans text-white text-center no-underline flex items-center justify-center"
+                                style={{ background: 'linear-gradient(135deg,#9333ea,#ec4899,#f97316)' }}
+                              >
+                                Open Instagram
+                              </a>
+                            </div>
+                            <button
+                              onClick={handleGenerateCaption}
+                              disabled={generatingCaption}
+                              className="text-[0.6rem] text-muted hover:text-charcoal transition-colors underline"
+                            >
+                              {generatingCaption ? 'Regenerating...' : 'Regenerate caption'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Step 2 — Refund request */}
+                      <div>
+                        <p className="text-[0.6rem] uppercase tracking-widest font-bold text-charcoal mb-2">Step 2 — Request Refund</p>
+                        {ugcSubmission?.status === 'approved' ? (
+                          <div className="p-3 text-xs leading-relaxed" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534' }}>
+                            Your refund of <strong>EUR {parseFloat(ugcSubmission.refund_amount).toFixed(2)}</strong> has been approved and is on its way.
+                          </div>
+                        ) : ugcSubmission?.status === 'pending' || ugcSubmitted ? (
+                          <div className="p-3 text-xs leading-relaxed" style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+                            Your refund request is pending review. Anna will process it shortly.
+                          </div>
+                        ) : !hasCheckedIn24hAgo ? (
+                          <p className="text-[0.65rem] text-muted italic">The upload button will appear 24 hours after check-in.</p>
+                        ) : (
+                          <div>
+                            <p className="text-xs text-muted mb-3">Upload a screenshot of your post showing <strong>@annas_stays</strong>.</p>
+                            <label
+                              className="flex flex-col items-center justify-center p-4 border-2 border-dashed cursor-pointer transition-colors"
+                              style={{ borderColor: '#d8b4fe' }}
+                            >
+                              {ugcSubmitting ? (
+                                <RefreshCw size={16} className="animate-spin" style={{ color: '#9333ea' }} />
+                              ) : (
+                                <>
+                                  <span className="text-[0.65rem] uppercase tracking-widest font-bold mb-1" style={{ color: '#9333ea' }}>Request My Refund</span>
+                                  <span className="text-[0.6rem] text-muted text-center">Upload screenshot of your post tagging @annas_stays</span>
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={ugcSubmitting}
+                                onChange={(e) => { if (e.target.files?.[0]) handleSubmitUgc(e.target.files[0]); }}
+                              />
+                            </label>
+                            {ugcError && (
+                              <p className="mt-2 text-xs text-clay">{ugcError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

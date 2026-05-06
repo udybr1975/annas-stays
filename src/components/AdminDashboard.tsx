@@ -23,7 +23,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<{ id: string, index: number } | null>(null);
   const [saveAllStatus, setSaveAllStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [activeTab, setActiveTab] = useState<"listings" | "pricing" | "reservations" | "knowledge">("reservations");
+  const [activeTab, setActiveTab] = useState<"listings" | "pricing" | "reservations" | "knowledge" | "ugcposts">("reservations");
   const [knowledgeBase, setKnowledgeBase] = useState<any[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [bulkImportText, setBulkImportText] = useState("");
@@ -57,6 +57,10 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     is_instant_book: true
   });
   const [isAdding, setIsAdding] = useState(false);
+
+  const [ugcSubmissions, setUgcSubmissions] = useState<any[]>([]);
+  const [ugcLoading, setUgcLoading] = useState(false);
+  const [approvingUgc, setApprovingUgc] = useState<string | null>(null);
 
   // ── Mobile burger menu state ───────────────────────────────────────────────
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -292,6 +296,8 @@ const deleteBooking = async (id: string) => {
         searchHelsinkiEvents();
       } else if (activeTab === "knowledge") {
         fetchKnowledgeBase();
+      } else if (activeTab === "ugcposts") {
+        fetchUgcSubmissions();
       }
     }
   }, [activeTab, selectedApartmentId]);
@@ -307,6 +313,46 @@ const deleteBooking = async (id: string) => {
     if (error) { console.error("Error fetching knowledge base:", error); }
     else { setKnowledgeBase(data || []); }
     setKnowledgeLoading(false);
+  };
+
+  const fetchUgcSubmissions = async () => {
+    setUgcLoading(true);
+    const { data, error } = await supabase
+      .from('ugc_submissions')
+      .select('*, bookings(reference_number, check_in, check_out, apartments(name)), guests(first_name, last_name, email)')
+      .order('created_at', { ascending: false });
+    if (error) { console.error('[AdminDashboard] fetchUgcSubmissions error:', error.message); }
+    else { setUgcSubmissions(data || []); }
+    setUgcLoading(false);
+  };
+
+  const handleApproveUgc = async (submissionId: string) => {
+    setApprovingUgc(submissionId);
+    try {
+      const res = await fetch('/api/approve-ugc-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId }),
+      });
+      const result = await res.json();
+      if (!res.ok) { showToast(result.error || 'Failed to approve refund', 'error'); return; }
+      showToast('Refund approved — EUR ' + Number(result.refundAmount).toFixed(2) + ' issued via Stripe', 'success');
+      setUgcSubmissions(prev => prev.map(s => s.id === submissionId ? { ...s, status: 'approved', approved_at: new Date().toISOString() } : s));
+    } catch (err: any) {
+      showToast('Unexpected error: ' + err.message, 'error');
+    } finally {
+      setApprovingUgc(null);
+    }
+  };
+
+  const handleRejectUgc = async (submissionId: string) => {
+    const { error } = await supabase
+      .from('ugc_submissions')
+      .update({ status: 'rejected' })
+      .eq('id', submissionId);
+    if (error) { showToast('Failed to reject: ' + error.message, 'error'); return; }
+    showToast('Submission rejected', 'success');
+    setUgcSubmissions(prev => prev.map(s => s.id === submissionId ? { ...s, status: 'rejected' } : s));
   };
 
   const handleSaveKnowledge = async () => {
@@ -712,6 +758,7 @@ const deleteBooking = async (id: string) => {
     { key: "listings",     label: "Apartments" },
     { key: "pricing",      label: "Special Pricing" },
     { key: "knowledge",    label: "Knowledge Base" },
+    { key: "ugcposts",     label: "Guest Posts" },
   ] as const;
 
   return (
@@ -1256,6 +1303,89 @@ const deleteBooking = async (id: string) => {
             onUpdateBookingStatus={updateBookingStatus}
             specialPrices={allSpecialPrices}
           />
+
+        ) : activeTab === "ugcposts" ? (
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-2xl font-light">Guest Instagram Posts</h2>
+              <button
+                onClick={fetchUgcSubmissions}
+                disabled={ugcLoading}
+                className="flex items-center gap-2 bg-cream text-charcoal border border-mist p-2.5 px-4 font-sans text-[0.7rem] tracking-widest uppercase hover:bg-mist transition-colors"
+              >
+                <RefreshCw size={14} className={ugcLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
+            {ugcLoading ? (
+              <div className="flex justify-center py-20"><RefreshCw className="animate-spin text-clay" size={40} /></div>
+            ) : ugcSubmissions.length === 0 ? (
+              <div className="text-center py-20 text-muted italic text-sm">No UGC submissions yet.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {ugcSubmissions.map(s => {
+                  const bk = s.bookings as any;
+                  const gt = s.guests as any;
+                  const apt = bk?.apartments as any;
+                  return (
+                    <div key={s.id} className="bg-white border border-mist overflow-hidden flex flex-col">
+                      <a href={s.screenshot_url} target="_blank" rel="noopener noreferrer" className="block shrink-0">
+                        <img src={s.screenshot_url} alt="UGC screenshot" className="w-full object-cover" style={{ maxHeight: '220px', objectFit: 'cover' }} />
+                      </a>
+                      <div className="p-5 flex flex-col gap-3 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-serif text-base font-light">{gt?.first_name} {gt?.last_name}</p>
+                            <p className="text-[0.65rem] text-muted uppercase tracking-widest">{apt?.name || 'Unknown apartment'}</p>
+                          </div>
+                          {s.status === 'approved' && (
+                            <span className="text-[0.6rem] font-bold uppercase tracking-widest text-white bg-forest px-2.5 py-1 shrink-0">Approved</span>
+                          )}
+                          {s.status === 'pending' && (
+                            <span className="text-[0.6rem] font-bold uppercase tracking-widest text-amber-800 bg-amber-100 px-2.5 py-1 shrink-0">Pending</span>
+                          )}
+                          {s.status === 'rejected' && (
+                            <span className="text-[0.6rem] font-bold uppercase tracking-widest text-muted line-through px-2.5 py-1 shrink-0">Rejected</span>
+                          )}
+                        </div>
+                        <div className="text-[0.7rem] text-muted space-y-1">
+                          <p>Ref: #{bk?.reference_number || '—'}</p>
+                          <p>Check-in: {bk?.check_in || '—'}</p>
+                          <p>Email: {gt?.email || '—'}</p>
+                          <p className="font-medium text-charcoal">Refund: EUR {parseFloat(s.refund_amount).toFixed(2)}</p>
+                          <p>Submitted: {new Date(s.created_at).toLocaleDateString()}</p>
+                        </div>
+                        {s.status === 'approved' && s.approved_at && (
+                          <p className="text-[0.65rem] text-forest">Approved on {new Date(s.approved_at).toLocaleDateString()}</p>
+                        )}
+                        {s.status === 'pending' && (
+                          <div className="flex gap-2 mt-auto pt-3 border-t border-mist">
+                            <button
+                              onClick={() => handleApproveUgc(s.id)}
+                              disabled={!!approvingUgc}
+                              className="flex-1 p-2.5 text-white text-[0.6rem] tracking-widest uppercase font-sans font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                              style={{ background: '#2d6a4f' }}
+                            >
+                              {approvingUgc === s.id ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectUgc(s.id)}
+                              disabled={!!approvingUgc}
+                              className="flex-1 p-2.5 text-white text-[0.6rem] tracking-widest uppercase font-sans font-bold transition-colors disabled:opacity-50"
+                              style={{ background: '#9d4a3c' }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
         ) : null}
 
         {/* Toast */}
