@@ -10,6 +10,9 @@ import approveBookingHandler from "./api/approve-booking.js";
 import declineBookingHandler from "./api/decline-booking.js";
 import notifyHandler from "./api/notify.js";
 import verifyBookingHandler from "./api/verify-booking.js";
+import instagramCaptionHandler from "./api/instagram-caption.js";
+import requestUgcRefundHandler from "./api/request-ugc-refund.js";
+import approveUgcRefundHandler from "./api/approve-ugc-refund.js";
 
 dotenv.config();
 
@@ -25,7 +28,7 @@ async function startServer() {
   app.post("/api/webhook", webhookHandler);
 
   // ─── JSON middleware for all other routes ────────────────────────────────
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // ─── API routes (Vercel serverless functions, registered here for local dev)
   app.post("/api/cancel-booking", cancelBookingHandler);
@@ -33,6 +36,9 @@ async function startServer() {
   app.post("/api/decline-booking", declineBookingHandler);
   app.post("/api/notify", notifyHandler);
   app.post("/api/verify-booking", verifyBookingHandler);
+  app.post("/api/instagram-caption", instagramCaptionHandler);
+  app.post("/api/request-ugc-refund", requestUgcRefundHandler);
+  app.post("/api/approve-ugc-refund", approveUgcRefundHandler);
 
   // ─── Stripe checkout session ─────────────────────────────────────────────
   app.post("/api/create-checkout-session", async (req, res) => {
