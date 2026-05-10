@@ -63,6 +63,15 @@
 2. Update STRIPE_WEBHOOK_SECRET in .env with the new whsec_ value from the Stripe CLI window
 3. Restart the app window
 
+## Recent Changes
+
+All changes below are in `src/components/ExecutiveView.tsx` (mobile view only — desktop untouched).
+
+- **Completed status:** on dashboard load, confirmed bookings whose checkout date has passed are auto-updated to `status = 'completed'` in Supabase and removed from the active list. A new "Completed" filter shows them sorted by checkout date descending.
+- **Mobile filter menu:** replaced the horizontal tab row with a bottom sheet triggered by a burger button. Each option shows a live booking count badge. Filter selection closes the sheet.
+- **Mobile calendar view:** full monthly calendar with apartment selector pills, month navigation, and booking bars rendered as colored horizontal strips (forest = confirmed, rose = pending, amber = awaiting payment, grey = completed). Bars split across week rows. Tapping any bar opens the existing BookingDrawer.
+- **List/Calendar toggle:** full-width two-button toggle bar (`List | Calendar`) placed below the sticky header, scrolls with the page. Switches `mobileView` state between `'list'` and `'calendar'`.
+
 ## Email Flow Impact Assessment
 After every code change, Claude must assess and announce which email scenarios could be affected:
 
