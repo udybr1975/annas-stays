@@ -16,7 +16,7 @@ import {
 import {
   ChevronLeft, ChevronRight, User, Calendar, Clock, MapPin,
   Phone, Mail, Trash2, X, AlertCircle, Send, RefreshCw, Check,
-  Sparkles, CreditCard, Bell, ChevronRight as ChevronRightIcon
+  Sparkles, CreditCard, Bell, ChevronRight as ChevronRightIcon, Menu
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -397,6 +397,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   const [acknowledging, setAcknowledging] = useState(false);
   const [mobileFilter, setMobileFilter] = useState<'all' | 'pending' | 'awaiting_payment' | 'confirmed' | 'completed'>('all');
   const [bookingOverrides, setBookingOverrides] = useState<Record<string, string>>({});
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmState | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -559,6 +560,22 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     [bookings, bookingOverrides]
   );
 
+  const filterLabels: Record<typeof mobileFilter, string> = {
+    all: 'All Bookings',
+    pending: 'Pending',
+    awaiting_payment: 'Awaiting Payment',
+    confirmed: 'Confirmed',
+    completed: 'Completed',
+  };
+
+  const filterCounts = useMemo(() => ({
+    all: effectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined' && b.status !== 'completed').length,
+    pending: effectiveBookings.filter(b => b.status === 'pending').length,
+    awaiting: effectiveBookings.filter(b => b.status === 'awaiting_payment').length,
+    confirmed: effectiveBookings.filter(b => b.status === 'confirmed').length,
+    completed: effectiveBookings.filter(b => b.status === 'completed').length,
+  }), [effectiveBookings]);
+
   const mobileBookings = useMemo(() => {
     if (mobileFilter === 'completed') {
       return effectiveBookings
@@ -572,34 +589,23 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     return filtered.sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
   }, [effectiveBookings, mobileFilter]);
 
-  const pendingCount = bookings.filter(b => b.status === 'pending').length;
-  const awaitingCount = bookings.filter(b => b.status === 'awaiting_payment').length;
-
   return (
     <>
       {/* ── MOBILE VIEW ──────────────────────────────────────────────────── */}
       <div className="md:hidden flex flex-col min-h-screen bg-warm-white pb-24">
-        <div className="sticky top-0 z-10 bg-white border-b border-mist px-4 pt-4 pb-0">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="font-serif text-2xl font-light">Bookings</h1>
+        <div className="sticky top-0 z-10 bg-white border-b border-mist px-4 py-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setShowFilterMenu(true)}
+              className="flex items-center gap-2 border border-mist px-3 py-1.5 rounded-sm"
+            >
+              <Menu size={14} />
+              <span className="text-[0.6rem] uppercase tracking-widest font-bold">{filterLabels[mobileFilter]}</span>
+            </button>
             <div className="flex items-center gap-2">
-              {pendingCount > 0 && <span className="bg-rose-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{pendingCount} pending</span>}
-              {awaitingCount > 0 && <span className="bg-amber-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{awaitingCount} awaiting</span>}
+              {filterCounts.pending > 0 && <span className="bg-rose-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.pending} pending</span>}
+              {filterCounts.awaiting > 0 && <span className="bg-amber-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.awaiting} awaiting</span>}
             </div>
-          </div>
-          <div className="flex gap-0 border-b border-mist -mx-4 px-4">
-            {([
-              { key: 'all', label: 'All' },
-              { key: 'pending', label: 'Pending' },
-              { key: 'awaiting_payment', label: 'Awaiting' },
-              { key: 'confirmed', label: 'Confirmed' },
-              { key: 'completed', label: 'Completed' },
-            ] as const).map(f => (
-              <button key={f.key} onClick={() => setMobileFilter(f.key)}
-                className={`flex-1 py-2.5 text-[0.6rem] uppercase tracking-widest font-bold border-b-2 transition-all ${mobileFilter === f.key ? 'border-charcoal text-charcoal' : 'border-transparent text-muted'}`}>
-                {f.label}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -814,6 +820,54 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
           ))}
         </section>
       </div>
+
+      {/* ── Filter bottom sheet ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showFilterMenu && (
+          <>
+            <div
+              className="fixed inset-0 bg-charcoal/40 z-[3000]"
+              onClick={() => setShowFilterMenu(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              className="fixed bottom-0 left-0 right-0 bg-white z-[3001] rounded-t-2xl shadow-2xl"
+            >
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 bg-mist rounded-full" />
+              </div>
+              <div className="px-5 py-4 border-b border-mist flex items-center justify-between">
+                <h3 className="font-serif text-lg">Filter Bookings</h3>
+                <button onClick={() => setShowFilterMenu(false)} className="p-2 hover:bg-mist rounded-full transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+              {([
+                { key: 'all',              label: 'All Bookings',     count: filterCounts.all,       badgeClass: 'bg-mist text-muted' },
+                { key: 'pending',          label: 'Pending',          count: filterCounts.pending,   badgeClass: filterCounts.pending > 0 ? 'bg-rose-100 text-rose-600' : 'bg-mist text-muted' },
+                { key: 'awaiting_payment', label: 'Awaiting Payment', count: filterCounts.awaiting,  badgeClass: filterCounts.awaiting > 0 ? 'bg-amber-100 text-amber-600' : 'bg-mist text-muted' },
+                { key: 'confirmed',        label: 'Confirmed',        count: filterCounts.confirmed, badgeClass: 'bg-mist text-muted' },
+                { key: 'completed',        label: 'Completed',        count: filterCounts.completed, badgeClass: 'bg-forest/10 text-forest' },
+              ] as const).map((opt, i, arr) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setMobileFilter(opt.key); setShowFilterMenu(false); }}
+                  className={`w-full py-4 px-6 flex items-center justify-between${i < arr.length - 1 ? ' border-b border-mist' : ''}`}
+                >
+                  <span className="text-sm font-sans">{opt.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[0.6rem] font-bold px-2 py-0.5 rounded-full ${opt.badgeClass}`}>{opt.count}</span>
+                    {mobileFilter === opt.key && <Check size={14} className="text-charcoal" />}
+                  </div>
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* ── Shared drawer and modal — rendered outside mobile/desktop split ── */}
       <BookingDrawer
