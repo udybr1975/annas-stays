@@ -16,7 +16,8 @@ import {
 import {
   ChevronLeft, ChevronRight, User, Calendar, Clock, MapPin,
   Phone, Mail, Trash2, X, AlertCircle, Send, RefreshCw, Check,
-  Sparkles, CreditCard, Bell, ChevronRight as ChevronRightIcon, Menu
+  Sparkles, CreditCard, Bell, ChevronRight as ChevronRightIcon, Menu,
+  LayoutList, CalendarDays
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -398,6 +399,9 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   const [mobileFilter, setMobileFilter] = useState<'all' | 'pending' | 'awaiting_payment' | 'confirmed' | 'completed'>('all');
   const [bookingOverrides, setBookingOverrides] = useState<Record<string, string>>({});
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [mobileView, setMobileView] = useState<'list' | 'calendar'>('list');
+  const [calendarApartmentId, setCalendarApartmentId] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [confirmation, setConfirmation] = useState<ConfirmState | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -418,6 +422,12 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
       await supabase.from('bookings').update({ status: 'completed' }).eq('id', id);
     });
   }, [bookings]);
+
+  useEffect(() => {
+    if (apartments.length > 0 && !calendarApartmentId) {
+      setCalendarApartmentId(String(apartments[0].id));
+    }
+  }, [apartments]);
 
   const handleAcknowledge = async (bookingId: string) => {
     setAcknowledging(true);
@@ -594,21 +604,38 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
       {/* ── MOBILE VIEW ──────────────────────────────────────────────────── */}
       <div className="md:hidden flex flex-col min-h-screen bg-warm-white pb-24">
         <div className="sticky top-0 z-10 bg-white border-b border-mist px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setShowFilterMenu(true)}
-              className="flex items-center gap-2 border border-mist px-3 py-1.5 rounded-sm"
+              className="flex items-center gap-2 border border-mist px-3 py-1.5 rounded-sm shrink-0"
             >
               <Menu size={14} />
               <span className="text-[0.6rem] uppercase tracking-widest font-bold">{filterLabels[mobileFilter]}</span>
             </button>
+            <h1 className="font-serif text-xl font-light">Bookings</h1>
+            <div className="flex-1" />
             <div className="flex items-center gap-2">
               {filterCounts.pending > 0 && <span className="bg-rose-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.pending} pending</span>}
               {filterCounts.awaiting > 0 && <span className="bg-amber-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.awaiting} awaiting</span>}
             </div>
+            <div className="flex rounded-sm overflow-hidden border border-mist shrink-0">
+              <button
+                onClick={() => setMobileView('list')}
+                className={`p-1.5 ${mobileView === 'list' ? 'bg-charcoal text-white' : 'bg-white text-muted'}`}
+              >
+                <LayoutList size={14} />
+              </button>
+              <button
+                onClick={() => setMobileView('calendar')}
+                className={`p-1.5 border-l border-mist ${mobileView === 'calendar' ? 'bg-charcoal text-white' : 'bg-white text-muted'}`}
+              >
+                <CalendarDays size={14} />
+              </button>
+            </div>
           </div>
         </div>
 
+        {mobileView === 'list' && (<>
         <div className="px-4 pt-4 pb-2">
           <p className="text-[0.6rem] uppercase tracking-widest text-muted font-bold mb-3">Today · {format(today, "d MMM yyyy")}</p>
           <div className="grid grid-cols-3 gap-2">
@@ -665,6 +692,131 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                 );
               })}
         </div>
+        </>)}
+
+        {mobileView === 'calendar' && (
+          <div className="pb-8">
+            <div className="flex gap-2 overflow-x-auto px-4 pt-4 pb-2">
+              {apartments.map(apt => (
+                <button key={apt.id} onClick={() => setCalendarApartmentId(String(apt.id))}
+                  className={`shrink-0 py-2 px-4 text-[0.65rem] uppercase tracking-widest font-bold font-sans rounded-full whitespace-nowrap ${calendarApartmentId === String(apt.id) ? 'bg-charcoal text-white' : 'bg-white border border-mist text-muted'}`}>
+                  {apt.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="px-4 py-3 flex items-center justify-between">
+              <button onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))} className="p-2 hover:bg-mist rounded-full">
+                <ChevronLeft size={18} />
+              </button>
+              <span className="font-serif text-lg">{format(calendarMonth, 'MMMM yyyy')}</span>
+              <button onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))} className="p-2 hover:bg-mist rounded-full">
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 px-4">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+                <div key={d} className="text-[0.55rem] uppercase tracking-widest text-muted text-center py-2">{d}</div>
+              ))}
+            </div>
+
+            {(() => {
+              const CELL_H = 44;
+              const monthStart = startOfMonth(calendarMonth);
+              const monthEnd = endOfMonth(calendarMonth);
+              const daysInMonth = monthEnd.getDate();
+              const firstDayCol = (monthStart.getDay() + 6) % 7;
+              const totalCells = Math.ceil((firstDayCol + daysInMonth) / 7) * 7;
+              const numRows = totalCells / 7;
+
+              const cells = Array.from({ length: totalCells }, (_, i) => {
+                const dayOffset = i - firstDayCol;
+                const isCurrentMonth = dayOffset >= 0 && dayOffset < daysInMonth;
+                const date = isCurrentMonth
+                  ? new Date(monthStart.getFullYear(), monthStart.getMonth(), dayOffset + 1)
+                  : null;
+                return { date, dayNum: isCurrentMonth ? dayOffset + 1 : null, isCurrentMonth };
+              });
+
+              const aptBookings = effectiveBookings.filter(b =>
+                String(b.apartment_id) === calendarApartmentId &&
+                b.status !== 'cancelled' && b.status !== 'declined'
+              );
+
+              const nextMonthStart = addDays(monthEnd, 1);
+              const barSegments: Array<{ booking: any; row: number; colStart: number; span: number }> = [];
+
+              for (const booking of aptBookings) {
+                const checkIn = parseISO(booking.check_in);
+                const checkOut = parseISO(booking.check_out);
+                const dispStart = checkIn < monthStart ? monthStart : checkIn;
+                const dispEnd = checkOut > nextMonthStart ? nextMonthStart : checkOut;
+                if (dispStart >= dispEnd) continue;
+                let cur = dispStart;
+                while (cur < dispEnd) {
+                  const dayIndexInMonth = differenceInDays(cur, monthStart);
+                  const cellIndex = firstDayCol + dayIndexInMonth;
+                  const row = Math.floor(cellIndex / 7);
+                  const colStart = cellIndex % 7;
+                  const daysLeft = differenceInDays(dispEnd, cur);
+                  const span = Math.min(7 - colStart, daysLeft);
+                  barSegments.push({ booking, row, colStart, span });
+                  cur = addDays(cur, span);
+                }
+              }
+
+              const barColors: Record<string, string> = {
+                confirmed: 'bg-forest',
+                pending: 'bg-rose-400',
+                awaiting_payment: 'bg-amber-400',
+                completed: 'bg-muted',
+              };
+
+              return (
+                <div className="px-4 relative" style={{ height: numRows * CELL_H }}>
+                  <div className="grid grid-cols-7 absolute inset-0">
+                    {cells.map(({ date, dayNum, isCurrentMonth }, i) => {
+                      const isToday = date ? isSameDay(date, today) : false;
+                      return (
+                        <div key={i} className="border-b border-r border-mist/30 flex items-start justify-center pt-1" style={{ height: CELL_H }}>
+                          {dayNum !== null && (
+                            isToday
+                              ? <span className="w-6 h-6 rounded-full bg-clay text-white text-xs font-mono flex items-center justify-center">{dayNum}</span>
+                              : <span className={`text-xs font-mono ${isCurrentMonth ? 'text-charcoal' : 'text-muted/30'}`}>{dayNum}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {barSegments.map(({ booking, row, colStart, span }, idx) => {
+                    const barColor = barColors[booking.status] || 'bg-charcoal';
+                    const guestData = booking.guests;
+                    const guest = Array.isArray(guestData) ? guestData[0] : guestData;
+                    const firstName = guest?.first_name || '';
+                    return (
+                      <button
+                        key={`${booking.id}-${idx}`}
+                        onClick={() => setSelectedBooking(booking)}
+                        className={`absolute ${barColor} rounded-sm z-10 overflow-hidden`}
+                        style={{
+                          top: row * CELL_H + CELL_H - 22,
+                          left: `${(colStart / 7) * 100}%`,
+                          width: `${(span / 7) * 100}%`,
+                          height: 18,
+                        }}
+                      >
+                        {span >= 2 && (
+                          <span className="text-[0.5rem] text-white font-bold truncate px-1 block leading-[18px]">{firstName}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {/* ── DESKTOP VIEW ─────────────────────────────────────────────────── */}
