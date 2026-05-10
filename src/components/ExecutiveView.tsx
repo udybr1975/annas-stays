@@ -17,7 +17,7 @@ import {
   ChevronLeft, ChevronRight, User, Calendar, Clock, MapPin,
   Phone, Mail, Trash2, X, AlertCircle, Send, RefreshCw, Check,
   Sparkles, CreditCard, Bell, ChevronRight as ChevronRightIcon, Menu,
-  LayoutList, CalendarDays
+  List, CalendarDays
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -618,21 +618,22 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
               {filterCounts.pending > 0 && <span className="bg-rose-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.pending} pending</span>}
               {filterCounts.awaiting > 0 && <span className="bg-amber-400 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full">{filterCounts.awaiting} awaiting</span>}
             </div>
-            <div className="flex rounded-sm overflow-hidden border border-mist shrink-0">
-              <button
-                onClick={() => setMobileView('list')}
-                className={`p-1.5 ${mobileView === 'list' ? 'bg-charcoal text-white' : 'bg-white text-muted'}`}
-              >
-                <LayoutList size={14} />
-              </button>
-              <button
-                onClick={() => setMobileView('calendar')}
-                className={`p-1.5 border-l border-mist ${mobileView === 'calendar' ? 'bg-charcoal text-white' : 'bg-white text-muted'}`}
-              >
-                <CalendarDays size={14} />
-              </button>
-            </div>
           </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2 flex">
+          <button
+            onClick={() => setMobileView('list')}
+            className={`flex-1 py-2.5 text-[0.65rem] uppercase tracking-widest font-bold font-sans flex items-center justify-center gap-2 rounded-l-sm ${mobileView === 'list' ? 'bg-charcoal text-white' : 'bg-white text-muted border border-mist'}`}
+          >
+            <List size={13} /> List
+          </button>
+          <button
+            onClick={() => setMobileView('calendar')}
+            className={`flex-1 py-2.5 text-[0.65rem] uppercase tracking-widest font-bold font-sans flex items-center justify-center gap-2 rounded-r-sm ${mobileView === 'calendar' ? 'bg-charcoal text-white' : 'bg-white text-muted border border-mist border-l-0'}`}
+          >
+            <CalendarDays size={13} /> Calendar
+          </button>
         </div>
 
         {mobileView === 'list' && (<>
