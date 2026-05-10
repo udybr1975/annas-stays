@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   format,
   addDays,
@@ -72,6 +72,7 @@ const getStatusConfig = (status: string) => {
     case 'awaiting_payment': return { color: 'bg-amber-400',   text: 'text-amber-600',   label: 'Awaiting Payment', bar: 'bg-amber-400' };
     case 'cancelled':        return { color: 'bg-clay',        text: 'text-clay',        label: 'Cancelled',        bar: 'bg-clay' };
     case 'declined':         return { color: 'bg-muted',       text: 'text-muted',       label: 'Declined',         bar: 'bg-muted' };
+    case 'completed':        return { color: 'bg-muted',       text: 'text-muted',       label: 'Completed',        bar: 'bg-muted' };
     default:                 return { color: 'bg-charcoal',    text: 'text-charcoal',    label: status,             bar: 'bg-charcoal' };
   }
 };
@@ -394,11 +395,28 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   const [sendingMessage, setSendingMessage] = useState(false);
   const [messageSent, setMessageSent] = useState(false);
   const [acknowledging, setAcknowledging] = useState(false);
-  const [mobileFilter, setMobileFilter] = useState<'all' | 'pending' | 'awaiting_payment' | 'confirmed'>('all');
+  const [mobileFilter, setMobileFilter] = useState<'all' | 'pending' | 'awaiting_payment' | 'confirmed' | 'completed'>('all');
+  const [bookingOverrides, setBookingOverrides] = useState<Record<string, string>>({});
   const [confirmation, setConfirmation] = useState<ConfirmState | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
+
+  useEffect(() => {
+    const toComplete = bookings.filter(
+      b => b.status === 'confirmed' && new Date(b.check_out + 'T23:59:59') < new Date()
+    );
+    if (toComplete.length === 0) return;
+    const ids = toComplete.map(b => b.id);
+    setBookingOverrides(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { next[id] = 'completed'; });
+      return next;
+    });
+    ids.forEach(async id => {
+      await supabase.from('bookings').update({ status: 'completed' }).eq('id', id);
+    });
+  }, [bookings]);
 
   const handleAcknowledge = async (bookingId: string) => {
     setAcknowledging(true);
@@ -536,10 +554,23 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     };
   }, [bookings, today]);
 
+  const effectiveBookings = useMemo(() =>
+    bookings.map(b => bookingOverrides[b.id] ? { ...b, status: bookingOverrides[b.id] } : b),
+    [bookings, bookingOverrides]
+  );
+
   const mobileBookings = useMemo(() => {
-    const active = bookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined');
-    return mobileFilter === 'all' ? active : active.filter(b => b.status === mobileFilter);
-  }, [bookings, mobileFilter]);
+    if (mobileFilter === 'completed') {
+      return effectiveBookings
+        .filter(b => b.status === 'completed')
+        .sort((a, b) => new Date(b.check_out).getTime() - new Date(a.check_out).getTime());
+    }
+    const active = effectiveBookings.filter(
+      b => b.status !== 'cancelled' && b.status !== 'declined' && b.status !== 'completed'
+    );
+    const filtered = mobileFilter === 'all' ? active : active.filter(b => b.status === mobileFilter);
+    return filtered.sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
+  }, [effectiveBookings, mobileFilter]);
 
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
   const awaitingCount = bookings.filter(b => b.status === 'awaiting_payment').length;
@@ -562,6 +593,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
               { key: 'pending', label: 'Pending' },
               { key: 'awaiting_payment', label: 'Awaiting' },
               { key: 'confirmed', label: 'Confirmed' },
+              { key: 'completed', label: 'Completed' },
             ] as const).map(f => (
               <button key={f.key} onClick={() => setMobileFilter(f.key)}
                 className={`flex-1 py-2.5 text-[0.6rem] uppercase tracking-widest font-bold border-b-2 transition-all ${mobileFilter === f.key ? 'border-charcoal text-charcoal' : 'border-transparent text-muted'}`}>
@@ -592,9 +624,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
             <div className="py-16 text-center">
               <p className="text-muted italic text-sm">No bookings in this category</p>
             </div>
-          ) : mobileBookings
-              .sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime())
-              .map(booking => {
+          ) : mobileBookings.map(booking => {
                 const apt = apartments.find((a: any) => a.id === booking.apartment_id);
                 const statusConfig = getStatusConfig(booking.status);
                 return (
@@ -621,6 +651,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                         {booking.status === 'pending' && <span className="text-[0.6rem] text-rose-500 font-bold uppercase tracking-widest flex items-center gap-1"><Bell size={10} /> Needs your approval</span>}
                         {booking.status === 'awaiting_payment' && <span className="text-[0.6rem] text-amber-600 font-bold uppercase tracking-widest flex items-center gap-1"><CreditCard size={10} /> Waiting for payment</span>}
                         {booking.status === 'confirmed' && <span className="text-[0.6rem] text-forest font-bold uppercase tracking-widest flex items-center gap-1"><Check size={10} /> Confirmed</span>}
+                        {booking.status === 'completed' && <span className="text-[0.6rem] text-muted font-bold uppercase tracking-widest flex items-center gap-1"><Check size={10} /> Completed</span>}
                         <ChevronRightIcon size={14} className="text-muted" />
                       </div>
                     </div>
