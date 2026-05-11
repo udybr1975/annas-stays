@@ -97,6 +97,37 @@ function BookingDrawer({
 }: DrawerProps) {
   if (!selectedBooking) return null;
 
+  if (selectedBooking.source === 'airbnb') {
+    const airbnbApt = apartments.find((a: any) => a.id === selectedBooking.apartment_id);
+    return (
+      <AnimatePresence>
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-charcoal/40 backdrop-blur-sm z-[4000]"
+          />
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 bg-warm-white z-[4001] max-h-[80vh] overflow-y-auto rounded-t-2xl shadow-2xl p-6 flex flex-col gap-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-xl font-light">Airbnb Reservation</h2>
+              <button onClick={onClose} className="p-2 hover:bg-mist/50 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            {airbnbApt && <div className="text-sm font-sans text-muted">{airbnbApt.name}</div>}
+            <div className="flex flex-col gap-1 font-sans text-sm">
+              <div><span className="text-[0.6rem] uppercase tracking-widest text-muted">Check-in</span><div className="text-charcoal">{selectedBooking.check_in}</div></div>
+              <div><span className="text-[0.6rem] uppercase tracking-widest text-muted">Check-out</span><div className="text-charcoal">{selectedBooking.check_out}</div></div>
+            </div>
+            <p className="text-[0.75rem] font-sans text-muted italic">This block was imported from Airbnb. No guest details available.</p>
+          </motion.div>
+        </>
+      </AnimatePresence>
+    );
+  }
+
   const apt = apartments.find((a: any) => a.id === selectedBooking.apartment_id);
   const guestData = selectedBooking.guests;
   const guest = Array.isArray(guestData) ? guestData[0] : guestData;
@@ -665,11 +696,11 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                   <motion.button key={booking.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                     onClick={() => setSelectedBooking(booking)}
                     className="w-full text-left bg-white border border-mist rounded-sm shadow-sm active:scale-[0.99] transition-all">
-                    <div className={`h-1 w-full rounded-t-sm ${statusConfig.bar}`} />
+                    <div className={`h-1 w-full rounded-t-sm ${booking.source === 'airbnb' ? 'bg-black' : statusConfig.bar}`} />
                     <div className="p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="font-serif text-base">{getGuestName(booking)}</p>
+                          <p className="font-serif text-base">{booking.source === 'airbnb' ? 'Airbnb' : getGuestName(booking)}</p>
                           <p className="text-[0.6rem] text-muted font-mono">{booking.reference_number}</p>
                         </div>
                         <div className="text-right">
@@ -791,10 +822,10 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                     })}
                   </div>
                   {barSegments.map(({ booking, row, colStart, span }, idx) => {
-                    const barColor = barColors[booking.status] || 'bg-charcoal';
+                    const barColor = booking.source === 'airbnb' ? 'bg-black' : (barColors[booking.status] || 'bg-charcoal');
                     const guestData = booking.guests;
                     const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-                    const firstName = guest?.first_name || '';
+                    const displayName = booking.source === 'airbnb' ? 'Airbnb' : (guest?.first_name || '');
                     return (
                       <button
                         key={`${booking.id}-${idx}`}
@@ -808,7 +839,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                         }}
                       >
                         {span >= 2 && (
-                          <span className="text-[0.5rem] text-white font-bold truncate px-1 block leading-[18px]">{firstName}</span>
+                          <span className="text-[0.5rem] text-white font-bold truncate px-1 block leading-[18px]">{displayName}</span>
                         )}
                       </button>
                     );
@@ -932,12 +963,13 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                           const left = (leftDays / days.length) * 100;
                           const width = (Math.max(0.1, durationDays) / days.length) * 100;
                           const sc = getStatusConfig(booking.status);
+                          const isAirbnb = booking.source === 'airbnb';
                           return (
                             <motion.button key={booking.id} initial={{ opacity: 0, scaleX: 0 }} animate={{ opacity: 1, scaleX: 1 }}
                               onClick={() => setSelectedBooking(booking)}
-                              className={`absolute top-4 bottom-4 rounded-sm shadow-sm flex items-center px-2 overflow-hidden cursor-pointer hover:brightness-110 transition-all z-10 ${sc.color}`}
+                              className={`absolute top-4 bottom-4 rounded-sm shadow-sm flex items-center px-2 overflow-hidden cursor-pointer hover:brightness-110 transition-all z-10 ${isAirbnb ? 'bg-black' : sc.color}`}
                               style={{ left: `${left}%`, width: `${width}%` }}>
-                              <span className="text-[0.6rem] text-white font-bold truncate uppercase tracking-tighter">{getGuestName(booking)}</span>
+                              <span className="text-[0.6rem] text-white font-bold truncate uppercase tracking-tighter">{isAirbnb ? 'Airbnb' : getGuestName(booking)}</span>
                             </motion.button>
                           );
                         })}

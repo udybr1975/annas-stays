@@ -38,6 +38,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [selectedApartmentId, setSelectedApartmentId] = useState<string | null>(null);
   const [tempPrices, setTempPrices] = useState<{ [key: string]: number }>({});
   const [eventPrices, setEventPrices] = useState<{ [key: string]: string }>({});
+  const [icalUrls, setIcalUrls] = useState<Record<string, string>>({});
+  const [icalTestResults, setIcalTestResults] = useState<Record<string, { valid: boolean; message: string } | null>>({});
+  const [icalSaving, setIcalSaving] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [seasonForm, setSeasonForm] = useState({
     high: { start: "", end: "", weekday: "", weekend: "" },
@@ -187,6 +190,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     } else {
       setBookings(data || []);
     }
+    fetch('/api/sync-airbnb', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allApartments: true }),
+    }).catch(() => {});
   };
 
 useEffect(() => {
@@ -1023,6 +1031,87 @@ const deleteBooking = async (id: string) => {
                     <label className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Description</label>
                     <textarea rows={4} defaultValue={l.description || l.desc} onBlur={e => updateListing(l.id, { description: e.target.value })}
                       className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none resize-none focus:border-clay" />
+                  </div>
+                  <div className="flex flex-col gap-3 border-t border-mist/40 pt-5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.6rem] tracking-widest uppercase text-muted font-sans">Airbnb Calendar Sync</span>
+                    </div>
+                    {l.airbnb_ical_url && (
+                      <div className="text-[0.7rem] font-sans text-muted break-all">
+                        Current: <span className="text-charcoal">{l.airbnb_ical_url}</span>
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      placeholder="Paste Airbnb iCal URL (.ics)"
+                      value={icalUrls[l.id] ?? (l.airbnb_ical_url || '')}
+                      onChange={e => setIcalUrls(prev => ({ ...prev, [l.id]: e.target.value }))}
+                      className="bg-warm-white border border-mist p-3 font-sans text-sm outline-none focus:border-clay"
+                    />
+                    {icalTestResults[l.id] && (
+                      <div className={`text-[0.7rem] font-sans ${icalTestResults[l.id]!.valid ? 'text-forest' : 'text-rose-600'}`}>
+                        {icalTestResults[l.id]!.message}
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={async () => {
+                          const url = icalUrls[l.id] ?? l.airbnb_ical_url ?? '';
+                          if (!url) return;
+                          setIcalTestResults(prev => ({ ...prev, [l.id]: null }));
+                          const res = await fetch('/api/sync-airbnb', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ testOnly: true, url }),
+                          });
+                          const json = await res.json();
+                          setIcalTestResults(prev => ({
+                            ...prev,
+                            [l.id]: json.valid
+                              ? { valid: true, message: `Valid — ${json.found} booking${json.found !== 1 ? 's' : ''} found` }
+                              : { valid: false, message: `Invalid: ${json.error || 'Unknown error'}` },
+                          }));
+                        }}
+                        className="px-4 py-2 bg-mist text-charcoal font-sans text-[0.65rem] tracking-widest uppercase hover:bg-mist/80 transition-colors"
+                      >
+                        Test URL
+                      </button>
+                      <button
+                        disabled={icalSaving[l.id]}
+                        onClick={async () => {
+                          const url = icalUrls[l.id] ?? '';
+                          if (!url) return;
+                          setIcalSaving(prev => ({ ...prev, [l.id]: true }));
+                          await supabase.from('apartments').update({ airbnb_ical_url: url }).eq('id', l.id);
+                          await fetch('/api/sync-airbnb', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ apartmentId: String(l.id) }),
+                          });
+                          setIcalUrls(prev => { const next = { ...prev }; delete next[l.id]; return next; });
+                          setIcalTestResults(prev => ({ ...prev, [l.id]: { valid: true, message: 'Saved and synced.' } }));
+                          setIcalSaving(prev => ({ ...prev, [l.id]: false }));
+                          fetchApartments();
+                        }}
+                        className="px-4 py-2 bg-forest text-white font-sans text-[0.65rem] tracking-widest uppercase hover:bg-forest/80 transition-colors disabled:opacity-50"
+                      >
+                        {icalSaving[l.id] ? 'Saving…' : 'Save & Sync'}
+                      </button>
+                      {l.airbnb_ical_url && (
+                        <button
+                          onClick={async () => {
+                            await supabase.from('apartments').update({ airbnb_ical_url: null }).eq('id', l.id);
+                            await supabase.from('bookings').delete().eq('apartment_id', l.id).eq('source', 'airbnb');
+                            setIcalUrls(prev => { const next = { ...prev }; delete next[l.id]; return next; });
+                            setIcalTestResults(prev => ({ ...prev, [l.id]: { valid: true, message: 'Disconnected and Airbnb blocks removed.' } }));
+                            fetchApartments();
+                          }}
+                          className="px-4 py-2 bg-rose-100 text-rose-700 font-sans text-[0.65rem] tracking-widest uppercase hover:bg-rose-200 transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
