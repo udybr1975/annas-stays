@@ -754,13 +754,25 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
             </div>
 
             {(() => {
-              const CELL_H = 44;
               const monthStart = startOfMonth(calendarMonth);
               const monthEnd = endOfMonth(calendarMonth);
               const daysInMonth = monthEnd.getDate();
               const firstDayCol = (monthStart.getDay() + 6) % 7;
               const totalCells = Math.ceil((firstDayCol + daysInMonth) / 7) * 7;
-              const numRows = totalCells / 7;
+
+              const aptBookings = effectiveBookings.filter(b =>
+                String(b.apartment_id) === calendarApartmentId &&
+                b.status !== 'cancelled' && b.status !== 'declined'
+              );
+
+              const getDotColor = (booking: any): string => {
+                if (booking.source === 'airbnb') return 'bg-black';
+                if (booking.status === 'confirmed') return 'bg-forest';
+                if (booking.status === 'pending') return 'bg-rose-400';
+                if (booking.status === 'awaiting_payment') return 'bg-amber-400';
+                if (booking.status === 'completed') return 'bg-muted';
+                return 'bg-charcoal';
+              };
 
               const cells = Array.from({ length: totalCells }, (_, i) => {
                 const dayOffset = i - firstDayCol;
@@ -768,80 +780,44 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                 const date = isCurrentMonth
                   ? new Date(monthStart.getFullYear(), monthStart.getMonth(), dayOffset + 1)
                   : null;
-                return { date, dayNum: isCurrentMonth ? dayOffset + 1 : null, isCurrentMonth };
+                const isToday = date ? isSameDay(date, today) : false;
+                const booking = date
+                  ? aptBookings.find(b => {
+                      const ci = parseISO(b.check_in);
+                      const co = parseISO(b.check_out);
+                      return date >= ci && date < co;
+                    })
+                  : undefined;
+                return { dayNum: isCurrentMonth ? dayOffset + 1 : null, isToday, booking };
               });
 
-              const aptBookings = effectiveBookings.filter(b =>
-                String(b.apartment_id) === calendarApartmentId &&
-                b.status !== 'cancelled' && b.status !== 'declined'
-              );
-
-              const nextMonthStart = addDays(monthEnd, 1);
-              const barSegments: Array<{ booking: any; row: number; colStart: number; span: number }> = [];
-
-              for (const booking of aptBookings) {
-                const checkIn = parseISO(booking.check_in);
-                const checkOut = parseISO(booking.check_out);
-                const dispStart = checkIn < monthStart ? monthStart : checkIn;
-                const dispEnd = checkOut > nextMonthStart ? nextMonthStart : checkOut;
-                if (dispStart >= dispEnd) continue;
-                let cur = dispStart;
-                while (cur < dispEnd) {
-                  const dayIndexInMonth = differenceInDays(cur, monthStart);
-                  const cellIndex = firstDayCol + dayIndexInMonth;
-                  const row = Math.floor(cellIndex / 7);
-                  const colStart = cellIndex % 7;
-                  const daysLeft = differenceInDays(dispEnd, cur);
-                  const span = Math.min(7 - colStart, daysLeft);
-                  barSegments.push({ booking, row, colStart, span });
-                  cur = addDays(cur, span);
-                }
-              }
-
-              const barColors: Record<string, string> = {
-                confirmed: 'bg-forest',
-                pending: 'bg-rose-400',
-                awaiting_payment: 'bg-amber-400',
-                completed: 'bg-muted',
-              };
-
               return (
-                <div className="px-4 mx-4 relative" style={{ height: numRows * CELL_H + 8 }}>
-                  <div className="grid grid-cols-7 absolute inset-0">
-                    {cells.map(({ date, dayNum, isCurrentMonth }, i) => {
-                      const isToday = date ? isSameDay(date, today) : false;
-                      return (
-                        <div key={i} className="border-b border-r border-mist/30 flex items-start justify-center pt-1" style={{ height: CELL_H }}>
-                          {dayNum !== null && (
-                            isToday
-                              ? <span className="w-6 h-6 rounded-full bg-clay text-white text-xs font-mono flex items-center justify-center">{dayNum}</span>
-                              : <span className={`text-xs font-mono ${isCurrentMonth ? 'text-charcoal' : 'text-muted/30'}`}>{dayNum}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {barSegments.map(({ booking, row, colStart, span }, idx) => {
-                    const barColor = booking.source === 'airbnb' ? 'bg-black' : (barColors[booking.status] || 'bg-charcoal');
-                    const guestData = booking.guests;
-                    const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-                    const displayName = booking.source === 'airbnb' ? 'Airbnb' : (guest?.first_name || '');
-                    return (
-                      <button
-                        key={`${booking.id}-${idx}`}
-                        onClick={() => setSelectedBooking(booking)}
-                        className={`absolute ${barColor} rounded-sm z-20 overflow-hidden touch-manipulation`}
-                        style={{
-                          top: row * CELL_H + CELL_H - 22,
-                          left: `${(colStart / 7) * 100}%`,
-                          width: `${(span / 7) * 100}%`,
-                          height: 18,
-                        }}
-                      >
-                        {span >= 2 && (
-                          <span className="text-[0.5rem] text-white font-bold truncate px-1 block leading-[18px]">{displayName}</span>
+                <div className="px-4 grid grid-cols-7">
+                  {cells.map(({ dayNum, isToday, booking }, i) => {
+                    const inner = dayNum !== null ? (
+                      <div className="flex flex-col items-center justify-start pt-1 pb-2 gap-1">
+                        {isToday
+                          ? <span className="w-6 h-6 rounded-full bg-clay text-white text-xs font-mono flex items-center justify-center">{dayNum}</span>
+                          : <span className="text-xs font-mono text-charcoal">{dayNum}</span>
+                        }
+                        {booking && (
+                          <span className={`w-2 h-2 rounded-full ${getDotColor(booking)}`} />
                         )}
+                      </div>
+                    ) : null;
+
+                    return booking && dayNum !== null ? (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedBooking(booking)}
+                        className="aspect-square border-b border-r border-mist/30 w-full touch-manipulation"
+                      >
+                        {inner}
                       </button>
+                    ) : (
+                      <div key={i} className="aspect-square border-b border-r border-mist/30">
+                        {inner}
+                      </div>
                     );
                   })}
                 </div>
