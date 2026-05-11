@@ -727,7 +727,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
         </>)}
 
         {mobileView === 'calendar' && (
-          <div className="pb-8">
+          <div className="pb-32 overflow-visible">
             <div className="flex gap-2 overflow-x-auto px-4 pt-4 pb-2">
               {apartments.map(apt => (
                 <button key={apt.id} onClick={() => setCalendarApartmentId(String(apt.id))}
@@ -806,7 +806,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
               };
 
               return (
-                <div className="px-4 relative" style={{ height: numRows * CELL_H }}>
+                <div className="px-4 mx-4 relative" style={{ height: numRows * CELL_H + 8 }}>
                   <div className="grid grid-cols-7 absolute inset-0">
                     {cells.map(({ date, dayNum, isCurrentMonth }, i) => {
                       const isToday = date ? isSameDay(date, today) : false;
@@ -830,7 +830,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                       <button
                         key={`${booking.id}-${idx}`}
                         onClick={() => setSelectedBooking(booking)}
-                        className={`absolute ${barColor} rounded-sm z-10 overflow-hidden`}
+                        className={`absolute ${barColor} rounded-sm z-20 overflow-hidden touch-manipulation`}
                         style={{
                           top: row * CELL_H + CELL_H - 22,
                           left: `${(colStart / 7) * 100}%`,
