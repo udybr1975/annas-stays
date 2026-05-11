@@ -806,16 +806,21 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                       </div>
                     ) : null;
 
+                    const airbnbStyle = booking?.source === 'airbnb'
+                      ? { background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(139,90,43,0.25) 4px, rgba(139,90,43,0.25) 8px)' }
+                      : undefined;
+
                     return booking && dayNum !== null ? (
                       <button
                         key={i}
                         onClick={() => setSelectedBooking(booking)}
                         className="aspect-square border-b border-r border-mist/30 w-full touch-manipulation"
+                        style={airbnbStyle}
                       >
                         {inner}
                       </button>
                     ) : (
-                      <div key={i} className="aspect-square border-b border-r border-mist/30">
+                      <div key={i} className="aspect-square border-b border-r border-mist/30" style={airbnbStyle}>
                         {inner}
                       </div>
                     );
