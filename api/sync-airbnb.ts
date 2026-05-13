@@ -80,7 +80,7 @@ export default async function handler(req: any, res: any) {
     const result = await fetchAndParse(apt.airbnb_ical_url);
 
     if (!result.ok) {
-      if (testOnly) return res.status(200).json({ valid: false, error: result.error });
+      if (testOnly) return res.status(200).json({ valid: false, error: (result as any).error });
       continue;
     }
 
