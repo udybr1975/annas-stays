@@ -295,11 +295,12 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
       }
 
       // 3. ntfy to Anna — via server to avoid browser CORS restrictions
-      fetch("/api/notify", {
+      fetch("/api/send-email", {
         method: "POST",
         keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ntfyOnly: true,
           title: "New Booking Request",
           priority: "high",
           body:

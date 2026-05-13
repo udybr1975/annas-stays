@@ -8,7 +8,6 @@ import webhookHandler from "./api/webhook.js";
 import cancelBookingHandler from "./api/cancel-booking.js";
 import approveBookingHandler from "./api/approve-booking.js";
 import declineBookingHandler from "./api/decline-booking.js";
-import notifyHandler from "./api/notify.js";
 import verifyBookingHandler from "./api/verify-booking.js";
 import instagramCaptionHandler from "./api/instagram-caption.js";
 import requestUgcRefundHandler from "./api/request-ugc-refund.js";
@@ -34,7 +33,6 @@ async function startServer() {
   app.post("/api/cancel-booking", cancelBookingHandler);
   app.post("/api/approve-booking", approveBookingHandler);
   app.post("/api/decline-booking", declineBookingHandler);
-  app.post("/api/notify", notifyHandler);
   app.post("/api/verify-booking", verifyBookingHandler);
   app.post("/api/instagram-caption", instagramCaptionHandler);
   app.post("/api/request-ugc-refund", requestUgcRefundHandler);
