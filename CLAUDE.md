@@ -72,6 +72,11 @@ All changes below are in `src/components/ExecutiveView.tsx` (mobile view only �
 - **Mobile calendar view:** full monthly calendar with apartment selector pills, month navigation, and booking bars rendered as colored horizontal strips (forest = confirmed, rose = pending, amber = awaiting payment, grey = completed). Bars split across week rows. Tapping any bar opens the existing BookingDrawer.
 - **List/Calendar toggle:** full-width two-button toggle bar (`List | Calendar`) placed below the sticky header, scrolls with the page. Switches `mobileView` state between `'list'` and `'calendar'`.
 
+Changes below are in `src/App.tsx`.
+
+- **Mobile tab-based guest experience:** `MobileApp` component added to `App.tsx` (`lg:hidden`). Three tabs — Stays (apartment cards with booking), Helsinki (guide grid + This Week in Helsinki), Chat (full-screen ChatBot). Desktop `LandingPage` wrapped in `hidden lg:block`, completely untouched. Only `App.tsx` modified.
+- **Staging/production sync status:** staging and production are currently in sync up to commit `fc2dbaf` (mobile calendar, filter menu, completed status). The new `MobileApp` (commit `9282ddf`) is on staging only — not yet promoted to production.
+
 ## Email Flow Impact Assessment
 After every code change, Claude must assess and announce which email scenarios could be affected:
 
