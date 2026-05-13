@@ -54,6 +54,8 @@ async function startServer() {
 
     const origin = req.headers.origin || "https://anna-stays.fi";
 
+    const stripeImages = process.env.ANNA_STAYS_LOGO_URL ? [process.env.ANNA_STAYS_LOGO_URL] : [];
+
     try {
       if (isInstantBook) {
         const session = await stripe.checkout.sessions.create({
@@ -66,6 +68,7 @@ async function startServer() {
               product_data: {
                 name: listing.name,
                 description: `${booking.nights} night stay · ${booking.checkIn} to ${booking.checkOut}`,
+                images: stripeImages,
               },
               unit_amount: Math.round(booking.totalPrice * 100),
             },
