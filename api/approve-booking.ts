@@ -2,6 +2,8 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { emailWrap, manageButton, bookingTable, annaSignature, annaMessage } from './emailTemplate.js';
 
+const STRIPE_LOGO_URL = process.env.ANNA_STAYS_LOGO_URL || '';
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
@@ -23,7 +25,7 @@ export default async function handler(req: any, res: any) {
   // 1. Fetch booking + guest from Supabase
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('*, guests(*), apartments(name)')
+    .select('*, guests(*), apartments(name, images)')
     .eq('id', bookingId)
     .single();
 
@@ -65,6 +67,8 @@ export default async function handler(req: any, res: any) {
     // 2. Create a Stripe Checkout Session (payment link) that expires in 24 hours
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24 hours from now
 
+    const approveStripeImages = STRIPE_LOGO_URL ? [STRIPE_LOGO_URL] : [];
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -76,6 +80,7 @@ export default async function handler(req: any, res: any) {
             product_data: {
               name: `Anna's Stays — Booking #${booking.reference_number}`,
               description: `${booking.check_in} to ${booking.check_out} · ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''}`,
+              images: approveStripeImages,
             },
             unit_amount: Math.round(booking.total_price * 100),
           },
