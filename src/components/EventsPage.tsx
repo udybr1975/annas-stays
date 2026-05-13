@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { GoogleGenAI } from "@google/genai";
 
 export default function EventsPage({ onClose }: { onClose: () => void }) {
   const [events, setEvents] = useState<any>(null);
@@ -11,22 +10,6 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
     setError(null);
     setEvents(null);
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      setError("API key not configured.");
-      setLoading(false);
-      return;
-    }
-
-    // Calculate dates inside loadEvents so they are always fresh on every click
-    const now = new Date();
-    const today = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-    const sevenDaysLater = new Date(now);
-    sevenDaysLater.setDate(now.getDate() + 7);
-    const until = sevenDaysLater.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-    const weekLabel = `${today} – ${until}`;
-
-    const ai = new GoogleGenAI({ apiKey });
     const MAX_RETRIES = 3;
     let lastError: any = null;
 
@@ -36,36 +19,33 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
           await new Promise(r => setTimeout(r, attempt * 3000));
         }
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [{
-            role: "user",
-            parts: [{
-              text: `Today is ${today}. List 5-7 real events happening in Helsinki between ${today} and ${until} (the next 7 days only). Do not include past events. Return ONLY a valid JSON object with no markdown, no code fences, just raw JSON: { "week": "${weekLabel}", "categories": [ { "name": "Events", "events": [ { "title": "Name", "venue": "Venue", "date": "Date", "desc": "Short description", "price": "Free or €XX" } ] } ] }`
-            }]
-          }],
-          config: {
-            responseMimeType: "application/json"
-          }
+        const res = await fetch('/api/helsinki-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
         });
 
-        const text = response.text || "";
-        const clean = text.replace(/```json|```/g, "").trim();
-        setEvents(JSON.parse(clean));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+
+        if (data.error) throw new Error('API returned error');
+
+        setEvents(data);
         setLoading(false);
         return;
 
       } catch (e: any) {
         lastError = e;
-        const msg = (e?.message || "").toLowerCase();
-        const isRetryable = msg.includes("503") || msg.includes("high demand") || msg.includes("unavailable") || msg.includes("overload");
+        const msg = (e?.message || '').toLowerCase();
+        const isRetryable = msg.includes('503') || msg.includes('high demand') || msg.includes('unavailable') || msg.includes('overload');
         console.warn(`Helsinki Guide: attempt ${attempt} failed — ${e?.message}`);
         if (!isRetryable) break;
       }
     }
 
-    console.error("Helsinki Guide Error:", lastError);
-    setError("Helsinki events couldn't load right now — Google's AI is busy. Please try again in a moment.");
+    console.error('Helsinki Guide Error:', lastError);
+    setError('unavailable');
     setLoading(false);
   };
 
@@ -96,11 +76,17 @@ export default function EventsPage({ onClose }: { onClose: () => void }) {
         )}
 
         {error && (
-          <div className="bg-red-50 p-6 rounded-lg text-center">
-            <p className="text-red-800 text-sm mb-4">{error}</p>
+          <div className="py-16 text-center flex flex-col items-center gap-6">
+            <div className="w-16 h-16 rounded-full bg-[#f7f4ef] flex items-center justify-center text-3xl">🌍</div>
+            <div>
+              <p className="font-serif text-xl font-light text-[#1a3c34] mb-2">Back soon</p>
+              <p className="text-sm text-gray-500 font-light leading-relaxed max-w-xs mx-auto">
+                Our Helsinki events guide is taking a short break. Check back in a little while — or ask Anna directly via the chat.
+              </p>
+            </div>
             <button
               onClick={loadEvents}
-              className="text-xs bg-[#1a3c34] text-white px-4 py-2 rounded hover:bg-[#1a3c34]/80 transition-colors"
+              className="text-xs border border-[#1a3c34] text-[#1a3c34] px-5 py-2.5 hover:bg-[#1a3c34] hover:text-white transition-colors tracking-widest uppercase font-sans"
             >
               Try again
             </button>
