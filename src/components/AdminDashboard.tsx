@@ -273,7 +273,7 @@ const deleteBooking = async (id: string) => {
       const response = await fetch('/api/cancel-booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: id }),
+        body: JSON.stringify({ bookingId: id, cancelledBy: 'admin' }),
       });
       const result = await response.json();
       if (!response.ok) {
