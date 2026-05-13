@@ -204,10 +204,11 @@ export default function ManageBooking({ listings = [] }: { listings?: any[] }) {
         ? `${guest.first_name} ${guest.last_name || ''}`.trim()
         : guest?.name || 'A guest';
 
-      fetch("/api/notify", {
+      fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ntfyOnly: true,
           title: "New Guest Message",
           priority: "high",
           body: `New message from ${guestName} (${booking.reference_number}):\n"${replyMessage.trim()}"`,

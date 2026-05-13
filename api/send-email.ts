@@ -6,6 +6,22 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ntfy-only mode: forward a push notification without sending email
+  if (req.body?.ntfyOnly === true) {
+    const { body, title, priority = 'default' } = req.body;
+    if (!body) return res.status(400).json({ error: 'Missing body' });
+    try {
+      await fetch(process.env.NTFY_URL!, {
+        method: 'POST',
+        body: body,
+        headers: { 'Title': title || "Anna's Stays", 'Priority': priority, 'Content-Type': 'text/plain' },
+      });
+      return res.status(200).json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   try {
         const body = req.body || {};
         // Dynamically get the guest's email

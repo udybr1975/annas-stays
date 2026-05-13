@@ -8,11 +8,12 @@ import webhookHandler from "./api/webhook.js";
 import cancelBookingHandler from "./api/cancel-booking.js";
 import approveBookingHandler from "./api/approve-booking.js";
 import declineBookingHandler from "./api/decline-booking.js";
-import notifyHandler from "./api/notify.js";
 import verifyBookingHandler from "./api/verify-booking.js";
 import instagramCaptionHandler from "./api/instagram-caption.js";
 import requestUgcRefundHandler from "./api/request-ugc-refund.js";
 import approveUgcRefundHandler from "./api/approve-ugc-refund.js";
+import helsinkiEventsHandler from "./api/helsinki-events.js";
+import syncAirbnbHandler from "./api/sync-airbnb.js";
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // ─── Stripe webhook MUST come before express.json() ─────────────────────
   // api/webhook.ts uses getRawBody(req) which reads the raw stream.
@@ -34,11 +35,12 @@ async function startServer() {
   app.post("/api/cancel-booking", cancelBookingHandler);
   app.post("/api/approve-booking", approveBookingHandler);
   app.post("/api/decline-booking", declineBookingHandler);
-  app.post("/api/notify", notifyHandler);
   app.post("/api/verify-booking", verifyBookingHandler);
   app.post("/api/instagram-caption", instagramCaptionHandler);
   app.post("/api/request-ugc-refund", requestUgcRefundHandler);
   app.post("/api/approve-ugc-refund", approveUgcRefundHandler);
+  app.post("/api/helsinki-events", helsinkiEventsHandler);
+  app.post("/api/sync-airbnb", syncAirbnbHandler);
 
   // ─── Stripe checkout session ─────────────────────────────────────────────
   app.post("/api/create-checkout-session", async (req, res) => {
@@ -128,6 +130,21 @@ async function startServer() {
 
   // ─── Email route ─────────────────────────────────────────────────────────
   app.post("/api/send-email", async (req, res) => {
+    if (req.body?.ntfyOnly === true) {
+      const { body, title, priority = 'default' } = req.body;
+      if (!body) return res.status(400).json({ error: 'Missing body' });
+      try {
+        await fetch(process.env.NTFY_URL!, {
+          method: 'POST',
+          body: body,
+          headers: { 'Title': title || "Anna's Stays", 'Priority': priority, 'Content-Type': 'text/plain' },
+        });
+        return res.status(200).json({ success: true });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+
     const { to, subject, html, replyTo } = req.body;
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) return res.status(500).json({ success: false, error: "No Resend API key" });
