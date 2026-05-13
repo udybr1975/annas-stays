@@ -63,19 +63,42 @@
 2. Update STRIPE_WEBHOOK_SECRET in .env with the new whsec_ value from the Stripe CLI window
 3. Restart the app window
 
-## Recent Changes
+## Staging / Production Sync
 
-All changes below are in `src/components/ExecutiveView.tsx` (mobile view only — desktop untouched).
+staging and main are currently **in sync** (last merged 2026-05-13).
 
-- **Completed status:** on dashboard load, confirmed bookings whose checkout date has passed are auto-updated to `status = 'completed'` in Supabase and removed from the active list. A new "Completed" filter shows them sorted by checkout date descending.
-- **Mobile filter menu:** replaced the horizontal tab row with a bottom sheet triggered by a burger button. Each option shows a live booking count badge. Filter selection closes the sheet.
-- **Mobile calendar view:** full monthly calendar with apartment selector pills, month navigation, and booking bars rendered as colored horizontal strips (forest = confirmed, rose = pending, amber = awaiting payment, grey = completed). Bars split across week rows. Tapping any bar opens the existing BookingDrawer.
-- **List/Calendar toggle:** full-width two-button toggle bar (`List | Calendar`) placed below the sticky header, scrolls with the page. Switches `mobileView` state between `'list'` and `'calendar'`.
+## Cancellation Flow Facts
 
-Changes below are in `src/App.tsx`.
+- **Pending bookings show "Decline Request"** — this sets `status = 'declined'` and sends different email subjects ("Booking Request Declined", "Regarding Your Reservation Request"). This is NOT the same as cancellation.
+- **"Cancel Reservation" only appears on confirmed bookings** — sets `status = 'cancelled'` and `cancelled_at`. This is the true admin cancel path.
+- **To test admin cancellation via QA:** create a booking request, then immediately force `status = 'confirmed'` via Supabase SQL (`UPDATE bookings SET status = 'confirmed' WHERE reference_number = '...' RETURNING id, status`), then cancel from the admin dashboard.
+- **Guest email subject is "Reservation Cancelled" in both cases** — admin-cancel and guest-cancel both produce the same guest-facing subject. This is intentional. The differentiation is HOST email only: admin cancel → "Booking Cancelled by You", guest cancel → "Guest Cancelled".
+- **ntfy differentiates by actor**: admin cancel → "Admin cancelled booking {REF}", guest cancel → "{GuestName} cancelled booking {REF}".
 
-- **Mobile tab-based guest experience:** `MobileApp` component added to `App.tsx` (`lg:hidden`). Three tabs — Stays (apartment cards with booking), Helsinki (guide grid + This Week in Helsinki), Chat (full-screen ChatBot). Desktop `LandingPage` wrapped in `hidden lg:block`, completely untouched. Only `App.tsx` modified.
-- **Staging/production sync status:** staging and production are currently in sync up to commit `fc2dbaf` (mobile calendar, filter menu, completed status). The new `MobileApp` (commit `9282ddf`) is on staging only — not yet promoted to production.
+## Playwright / Browser Automation Rules
+
+- **Calendar date selection requires dispatchEvent** — Playwright ref-based clicks and JavaScript `.click()` do not trigger React's root-delegated event listeners. The only reliable method:
+  ```javascript
+  const rect = cell.getBoundingClientRect();
+  cell.dispatchEvent(new MouseEvent('click', {
+    bubbles: true, cancelable: true, view: window,
+    clientX: rect.left + rect.width / 2,
+    clientY: rect.top + rect.height / 2
+  }));
+  ```
+  Wait **600ms** between check-in and check-out clicks.
+- **Stale element refs after React re-renders** — element refs captured in a snapshot become invalid after any React state change. Re-snapshot or use `browser_evaluate` with fresh `document.querySelector` calls after each interaction that triggers a re-render.
+- **Beautiful Private Space: minimum 3 nights** — 2-night bookings will be rejected. Always use 3+ nights for this apartment.
+- **Beautiful Private Space: July is mostly blocked** — Airbnb iCal sync blocks most of July. Use August or another open month for QA test bookings.
+
+## Resend API Verification
+
+- **Always use `curl` via the Bash tool** — Python `urllib` returns 403 and PowerShell `Invoke-WebRequest` fails in NonInteractive mode. The only reliable method:
+  ```bash
+  curl -s "https://api.resend.com/emails?limit=50" \
+    -H "Authorization: Bearer {RESEND_API_KEY}"
+  ```
+- Read `RESEND_API_KEY` from `.env` before any QA run. Record test start time and filter all email results to `created_at` after that timestamp.
 
 ## Email Flow Impact Assessment
 After every code change, Claude must assess and announce which email scenarios could be affected:
