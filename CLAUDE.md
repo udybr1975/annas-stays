@@ -67,6 +67,14 @@
 
 staging and main are currently **in sync** (last merged 2026-05-13).
 
+## Stripe Checkout Image
+
+- The Stripe checkout page displays a fixed brand logo for ALL apartments — not apartment photos
+- Image source: ANNA_STAYS_LOGO_URL environment variable (set in Vercel + local .env)
+- Logo file: stored in Supabase apartment-images bucket as annas-stays-logo.png
+- Logic in: api/create-checkout-session.ts, api/approve-booking.ts, server.ts
+- Never pass listing.imgs to Stripe — the logo is always used regardless of apartment
+
 ## Cancellation Flow Facts
 
 - **Pending bookings show "Decline Request"** — this sets `status = 'declined'` and sends different email subjects ("Booking Request Declined", "Regarding Your Reservation Request"). This is NOT the same as cancellation.
