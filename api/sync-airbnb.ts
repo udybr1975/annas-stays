@@ -45,7 +45,7 @@ export default async function handler(req: any, res: any) {
   // testOnly with a direct URL — validate without touching the database
   if (testOnly && testUrl) {
     const result = await fetchAndParse(testUrl);
-    if (!result.ok) return res.status(200).json({ valid: false, error: result.error });
+    if (!result.ok) return res.status(200).json({ valid: false, error: (result as any).error });
     return res.status(200).json({ valid: true, found: result.events.length });
   }
 
