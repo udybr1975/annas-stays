@@ -9,3 +9,6 @@ coverage/
 tests/
 api/test/
 .vercel
+.playwright-mcp/
+*.png
+resend_emails.json
