@@ -194,6 +194,8 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     try {
       const finalRef = generateRef();
 
+      console.log('[BookingModal] handleInstantBook listing.imgs:', JSON.stringify(listing.imgs));
+
       const stripeResponse = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,7 +211,7 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
             transfer: transfer,
             message: form.message.trim(),
           },
-          listing: { id: listing.id, name: listing.name },
+          listing: { id: listing.id, name: listing.name, imgs: listing.imgs },
           guest: {
             email: form.em.trim().toLowerCase(),
             firstName: form.fn.trim(),

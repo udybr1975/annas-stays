@@ -17,10 +17,18 @@ export default async function handler(req: any, res: any) {
 
   const origin = req.headers.origin || 'https://anna-stays.fi';
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const rawImg: string | undefined = (listing.imgs || [])[0];
+  const stripeImages: string[] = rawImg
+    ? [rawImg.startsWith('http') ? rawImg : `${supabaseUrl}/storage/v1/object/public/apartment-images/${rawImg}`]
+    : [];
+
   try {
     if (isInstantBook) {
       // INSTANT BOOK: Charge the full amount immediately.
       // Webhook will then save guest + booking to Supabase as 'confirmed'.
+      console.log('[create-checkout-session] listing.imgs received:', JSON.stringify(listing.imgs));
+      console.log('[create-checkout-session] stripeImages resolved:', JSON.stringify(stripeImages));
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',
@@ -32,6 +40,7 @@ export default async function handler(req: any, res: any) {
               product_data: {
                 name: listing.name,
                 description: `${booking.nights} night stay · ${booking.checkIn} to ${booking.checkOut}`,
+                images: stripeImages,
               },
               unit_amount: Math.round(booking.totalPrice * 100),
             },
