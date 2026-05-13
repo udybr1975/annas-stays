@@ -17,7 +17,7 @@ export default async function handler(req: any, res: any) {
   const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' as any });
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { bookingId } = req.body;
+  const { bookingId, cancelledBy } = req.body;
 
   if (!bookingId) return res.status(400).json({ error: 'Missing bookingId' });
 
@@ -114,8 +114,8 @@ const { error: updateError } = await supabase
         : '';
 
       const guestHtml = emailWrap(
-        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">Your reservation has been cancelled.</h1>' +
-        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">We\'re sorry to see you go.</p>' +
+        '<h1 style="font-family:Georgia,serif;font-size:26px;font-weight:normal;margin:0 0 8px;color:#2C2C2A;">' + (cancelledBy === 'admin' ? 'We need to let you know about a change to your upcoming reservation.' : 'Your cancellation has been confirmed.') + '</h1>' +
+        '<p style="font-size:13px;color:#7A756E;margin:0 0 28px;font-style:italic;">' + (cancelledBy === 'admin' ? 'We sincerely apologise for any inconvenience this causes.' : 'We have received your cancellation request.') + '</p>' +
         bookingTable([
           ['Reference',  '#' + referenceNumber],
           ['Apartment',  apartmentName],
@@ -124,7 +124,7 @@ const { error: updateError } = await supabase
           ['Guests',     String(booking.guest_count)],
         ]) +
         refundBlock +
-        annaMessage('I was so looking forward to hosting you. I completely understand that plans change, and I hope we will have the chance to meet in Helsinki on another occasion.') +
+        annaMessage(cancelledBy === 'admin' ? 'I sincerely apologise for any inconvenience this causes. Unfortunately I am unable to accommodate your stay as planned. I truly hope this does not affect your plans too much, and I would love to welcome you to Helsinki on another occasion.' : 'Thank you for letting me know. I completely understand that plans change, and I hope we will have the chance to meet in Helsinki another time.') +
         '<div style="text-align:center;margin:36px 0 8px;">' +
         '<a href="https://anna-stays.fi" style="display:inline-block;padding:13px 30px;border:1.5px solid #3D4F3E;color:#3D4F3E;font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;">' +
         'Browse Availability &rarr;' +
@@ -167,7 +167,7 @@ const { error: updateError } = await supabase
         body: JSON.stringify({
           from: "Anna's Stays <info@anna-stays.fi>",
           to: ['info@anna-stays.fi'],
-          subject: 'Booking Cancelled — #' + referenceNumber + ' | Anna\'s Stays',
+          subject: (cancelledBy === 'admin' ? 'Booking Cancelled by You' : 'Guest Cancelled') + ' — #' + referenceNumber + ' | Anna\'s Stays',
           html: '<div style="font-family:Georgia,serif;color:#2C2C2A;max-width:600px;margin:0 auto;padding:32px;border:1px solid #E8E3DC;"><h2 style="font-weight:normal;">Booking Cancelled</h2><p><strong>Guest:</strong> ' + guestFullName + '</p><p><strong>Email:</strong> ' + (guestEmail || 'N/A') + '</p><p><strong>Reference:</strong> #' + referenceNumber + '</p><p><strong>Apartment:</strong> ' + apartmentName + '</p><p><strong>Check-in:</strong> ' + booking.check_in + '</p><p><strong>Check-out:</strong> ' + booking.check_out + '</p><p><strong>Total:</strong> EUR ' + booking.total_price + '</p>' + (refundIssued ? '<p><strong>Refund:</strong> EUR ' + booking.total_price + ' issued automatically via Stripe</p>' : '<p><strong>Refund:</strong> No payment found — no refund issued</p>') + '</div>',
         }),
       });
@@ -181,7 +181,7 @@ const { error: updateError } = await supabase
   try {
     await fetch(process.env.NTFY_URL!, {
       method: 'POST',
-      body: guestFullName + ' cancelled booking ' + referenceNumber + ' at ' + apartmentName + (refundIssued ? ' — EUR ' + booking.total_price + ' refunded via Stripe' : ' — no payment found, no refund issued'),
+      body: (cancelledBy === 'admin' ? 'Admin cancelled booking' : guestFullName + ' cancelled booking') + ' ' + referenceNumber + ' at ' + apartmentName + (refundIssued ? ' — EUR ' + booking.total_price + ' refunded via Stripe' : ' — no payment found, no refund issued'),
       headers: {
         'Title': 'Booking Cancelled',
         'Priority': 'default',

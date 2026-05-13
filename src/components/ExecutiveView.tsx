@@ -97,6 +97,37 @@ function BookingDrawer({
 }: DrawerProps) {
   if (!selectedBooking) return null;
 
+  if (selectedBooking.source === 'airbnb') {
+    const airbnbApt = apartments.find((a: any) => a.id === selectedBooking.apartment_id);
+    return (
+      <AnimatePresence>
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-charcoal/40 backdrop-blur-sm z-[4000]"
+          />
+          <motion.div
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 bg-warm-white z-[4001] max-h-[80vh] overflow-y-auto rounded-t-2xl shadow-2xl p-6 flex flex-col gap-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-xl font-light">Airbnb Reservation</h2>
+              <button onClick={onClose} className="p-2 hover:bg-mist/50 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            {airbnbApt && <div className="text-sm font-sans text-muted">{airbnbApt.name}</div>}
+            <div className="flex flex-col gap-1 font-sans text-sm">
+              <div><span className="text-[0.6rem] uppercase tracking-widest text-muted">Check-in</span><div className="text-charcoal">{selectedBooking.check_in}</div></div>
+              <div><span className="text-[0.6rem] uppercase tracking-widest text-muted">Check-out</span><div className="text-charcoal">{selectedBooking.check_out}</div></div>
+            </div>
+            <p className="text-[0.75rem] font-sans text-muted italic">This block was imported from Airbnb. No guest details available.</p>
+          </motion.div>
+        </>
+      </AnimatePresence>
+    );
+  }
+
   const apt = apartments.find((a: any) => a.id === selectedBooking.apartment_id);
   const guestData = selectedBooking.guests;
   const guest = Array.isArray(guestData) ? guestData[0] : guestData;
@@ -665,11 +696,11 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                   <motion.button key={booking.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                     onClick={() => setSelectedBooking(booking)}
                     className="w-full text-left bg-white border border-mist rounded-sm shadow-sm active:scale-[0.99] transition-all">
-                    <div className={`h-1 w-full rounded-t-sm ${statusConfig.bar}`} />
+                    <div className={`h-1 w-full rounded-t-sm ${booking.source === 'airbnb' ? 'bg-black' : statusConfig.bar}`} />
                     <div className="p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="font-serif text-base">{getGuestName(booking)}</p>
+                          <p className="font-serif text-base">{booking.source === 'airbnb' ? 'Airbnb' : getGuestName(booking)}</p>
                           <p className="text-[0.6rem] text-muted font-mono">{booking.reference_number}</p>
                         </div>
                         <div className="text-right">
@@ -696,7 +727,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
         </>)}
 
         {mobileView === 'calendar' && (
-          <div className="pb-8">
+          <div className="pb-32 overflow-visible">
             <div className="flex gap-2 overflow-x-auto px-4 pt-4 pb-2">
               {apartments.map(apt => (
                 <button key={apt.id} onClick={() => setCalendarApartmentId(String(apt.id))}
@@ -723,13 +754,25 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
             </div>
 
             {(() => {
-              const CELL_H = 44;
               const monthStart = startOfMonth(calendarMonth);
               const monthEnd = endOfMonth(calendarMonth);
               const daysInMonth = monthEnd.getDate();
               const firstDayCol = (monthStart.getDay() + 6) % 7;
               const totalCells = Math.ceil((firstDayCol + daysInMonth) / 7) * 7;
-              const numRows = totalCells / 7;
+
+              const aptBookings = effectiveBookings.filter(b =>
+                String(b.apartment_id) === calendarApartmentId &&
+                b.status !== 'cancelled' && b.status !== 'declined'
+              );
+
+              const getDotColor = (booking: any): string => {
+                if (booking.source === 'airbnb') return 'bg-black';
+                if (booking.status === 'confirmed') return 'bg-forest';
+                if (booking.status === 'pending') return 'bg-rose-400';
+                if (booking.status === 'awaiting_payment') return 'bg-amber-400';
+                if (booking.status === 'completed') return 'bg-muted';
+                return 'bg-charcoal';
+              };
 
               const cells = Array.from({ length: totalCells }, (_, i) => {
                 const dayOffset = i - firstDayCol;
@@ -737,80 +780,49 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                 const date = isCurrentMonth
                   ? new Date(monthStart.getFullYear(), monthStart.getMonth(), dayOffset + 1)
                   : null;
-                return { date, dayNum: isCurrentMonth ? dayOffset + 1 : null, isCurrentMonth };
+                const isToday = date ? isSameDay(date, today) : false;
+                const booking = date
+                  ? aptBookings.find(b => {
+                      const ci = parseISO(b.check_in);
+                      const co = parseISO(b.check_out);
+                      return date >= ci && date < co;
+                    })
+                  : undefined;
+                return { dayNum: isCurrentMonth ? dayOffset + 1 : null, isToday, booking };
               });
 
-              const aptBookings = effectiveBookings.filter(b =>
-                String(b.apartment_id) === calendarApartmentId &&
-                b.status !== 'cancelled' && b.status !== 'declined'
-              );
-
-              const nextMonthStart = addDays(monthEnd, 1);
-              const barSegments: Array<{ booking: any; row: number; colStart: number; span: number }> = [];
-
-              for (const booking of aptBookings) {
-                const checkIn = parseISO(booking.check_in);
-                const checkOut = parseISO(booking.check_out);
-                const dispStart = checkIn < monthStart ? monthStart : checkIn;
-                const dispEnd = checkOut > nextMonthStart ? nextMonthStart : checkOut;
-                if (dispStart >= dispEnd) continue;
-                let cur = dispStart;
-                while (cur < dispEnd) {
-                  const dayIndexInMonth = differenceInDays(cur, monthStart);
-                  const cellIndex = firstDayCol + dayIndexInMonth;
-                  const row = Math.floor(cellIndex / 7);
-                  const colStart = cellIndex % 7;
-                  const daysLeft = differenceInDays(dispEnd, cur);
-                  const span = Math.min(7 - colStart, daysLeft);
-                  barSegments.push({ booking, row, colStart, span });
-                  cur = addDays(cur, span);
-                }
-              }
-
-              const barColors: Record<string, string> = {
-                confirmed: 'bg-forest',
-                pending: 'bg-rose-400',
-                awaiting_payment: 'bg-amber-400',
-                completed: 'bg-muted',
-              };
-
               return (
-                <div className="px-4 relative" style={{ height: numRows * CELL_H }}>
-                  <div className="grid grid-cols-7 absolute inset-0">
-                    {cells.map(({ date, dayNum, isCurrentMonth }, i) => {
-                      const isToday = date ? isSameDay(date, today) : false;
-                      return (
-                        <div key={i} className="border-b border-r border-mist/30 flex items-start justify-center pt-1" style={{ height: CELL_H }}>
-                          {dayNum !== null && (
-                            isToday
-                              ? <span className="w-6 h-6 rounded-full bg-clay text-white text-xs font-mono flex items-center justify-center">{dayNum}</span>
-                              : <span className={`text-xs font-mono ${isCurrentMonth ? 'text-charcoal' : 'text-muted/30'}`}>{dayNum}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {barSegments.map(({ booking, row, colStart, span }, idx) => {
-                    const barColor = barColors[booking.status] || 'bg-charcoal';
-                    const guestData = booking.guests;
-                    const guest = Array.isArray(guestData) ? guestData[0] : guestData;
-                    const firstName = guest?.first_name || '';
-                    return (
-                      <button
-                        key={`${booking.id}-${idx}`}
-                        onClick={() => setSelectedBooking(booking)}
-                        className={`absolute ${barColor} rounded-sm z-10 overflow-hidden`}
-                        style={{
-                          top: row * CELL_H + CELL_H - 22,
-                          left: `${(colStart / 7) * 100}%`,
-                          width: `${(span / 7) * 100}%`,
-                          height: 18,
-                        }}
-                      >
-                        {span >= 2 && (
-                          <span className="text-[0.5rem] text-white font-bold truncate px-1 block leading-[18px]">{firstName}</span>
+                <div className="px-4 grid grid-cols-7">
+                  {cells.map(({ dayNum, isToday, booking }, i) => {
+                    const inner = dayNum !== null ? (
+                      <div className="flex flex-col items-center justify-start pt-1 pb-2 gap-1">
+                        {isToday
+                          ? <span className="w-6 h-6 rounded-full bg-clay text-white text-xs font-mono flex items-center justify-center">{dayNum}</span>
+                          : <span className="text-xs font-mono text-charcoal">{dayNum}</span>
+                        }
+                        {booking && (
+                          <span className={`w-2 h-2 rounded-full ${getDotColor(booking)}`} />
                         )}
+                      </div>
+                    ) : null;
+
+                    const airbnbStyle = booking?.source === 'airbnb'
+                      ? { background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(139,90,43,0.25) 4px, rgba(139,90,43,0.25) 8px)' }
+                      : undefined;
+
+                    return booking && dayNum !== null ? (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedBooking(booking)}
+                        className="aspect-square border-b border-r border-mist/30 w-full touch-manipulation"
+                        style={airbnbStyle}
+                      >
+                        {inner}
                       </button>
+                    ) : (
+                      <div key={i} className="aspect-square border-b border-r border-mist/30" style={airbnbStyle}>
+                        {inner}
+                      </div>
                     );
                   })}
                 </div>
@@ -932,12 +944,13 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                           const left = (leftDays / days.length) * 100;
                           const width = (Math.max(0.1, durationDays) / days.length) * 100;
                           const sc = getStatusConfig(booking.status);
+                          const isAirbnb = booking.source === 'airbnb';
                           return (
                             <motion.button key={booking.id} initial={{ opacity: 0, scaleX: 0 }} animate={{ opacity: 1, scaleX: 1 }}
                               onClick={() => setSelectedBooking(booking)}
-                              className={`absolute top-4 bottom-4 rounded-sm shadow-sm flex items-center px-2 overflow-hidden cursor-pointer hover:brightness-110 transition-all z-10 ${sc.color}`}
+                              className={`absolute top-4 bottom-4 rounded-sm shadow-sm flex items-center px-2 overflow-hidden cursor-pointer hover:brightness-110 transition-all z-10 ${isAirbnb ? 'bg-black' : sc.color}`}
                               style={{ left: `${left}%`, width: `${width}%` }}>
-                              <span className="text-[0.6rem] text-white font-bold truncate uppercase tracking-tighter">{getGuestName(booking)}</span>
+                              <span className="text-[0.6rem] text-white font-bold truncate uppercase tracking-tighter">{isAirbnb ? 'Airbnb' : getGuestName(booking)}</span>
                             </motion.button>
                           );
                         })}

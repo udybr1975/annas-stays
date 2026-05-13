@@ -12,7 +12,7 @@ import GuideModal from "./components/GuideModal";
 import EventsPage from "./components/EventsPage";
 import Lightbox from "./components/Lightbox";
 import ChatBot from "./components/ChatBot";
-import { Mail, Phone, ExternalLink, ChevronRight, Star, Check, X, Menu, Settings, RefreshCw, LogOut } from "lucide-react";
+import { Mail, Phone, ExternalLink, ChevronRight, Star, Check, X, Menu, Settings, RefreshCw, LogOut, Home, Map, MessageCircle, CalendarDays } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { resolveImageUrl } from "./lib/imageUtils";
 import AdminDashboard from "./components/AdminDashboard";
@@ -249,6 +249,8 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
   );
 
   return (
+    <>
+    <div className="hidden lg:block">
     <div className="font-sans text-charcoal bg-warmWhite min-h-screen">
       {/* NAV */}
       <nav className="nav-wrap flex items-center justify-between p-5 px-6 md:px-12 border-b border-mist bg-warm-white sticky top-0 z-[100] gap-4">
@@ -667,6 +669,186 @@ function LandingPage({ listings, specialPrices, fetchListings, isAdmin }: { list
           console.error("App: Error in onBookNow handler:", err);
         }
       }} />
+    </div>
+    </div>
+    <div className="lg:hidden">
+      <MobileApp listings={listings} specialPrices={specialPrices} isAdmin={isAdmin} />
+    </div>
+    </>
+  );
+}
+
+function MobileApp({ listings, specialPrices, isAdmin }: { listings: any[], specialPrices: any[], isAdmin: boolean }) {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'stays' | 'helsinki' | 'chat'>('stays');
+  const [booking, setBooking] = useState<any | null>(null);
+  const [guideModal, setGuideModal] = useState<any | null>(null);
+  const [showEvents, setShowEvents] = useState(false);
+  const [lightbox, setLightbox] = useState<{ imgs: string[]; idx: number } | null>(null);
+
+  const getMobilePrice = (listing: any) => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const aptPrices = specialPrices.filter(p => p.apartment_id === listing.id);
+    const event = aptPrices.find(p => p.pricing_type !== 'season' && todayStr >= p.start_date && todayStr <= p.end_date);
+    if (event) return event.price_override || event.price;
+    const highSeason = aptPrices.find(p => p.pricing_type === 'season' && p.event_name?.toLowerCase().includes('high') && todayStr >= p.start_date && todayStr <= p.end_date);
+    if (highSeason) {
+      const day = today.getDay();
+      const isWeekend = day === 5 || day === 6;
+      return isWeekend ? (highSeason.weekend_price_override || highSeason.price_override) : highSeason.price_override;
+    }
+    const day = today.getDay();
+    const isWeekend = day === 5 || day === 6;
+    if (isWeekend && listing.weekend_pricing_enabled) {
+      const base = listing.price;
+      const val = listing.weekend_pricing_value || 0;
+      return listing.weekend_pricing_type === 'percentage' ? Math.round(base * (1 + val / 100)) : base + val;
+    }
+    return listing.price;
+  };
+
+  return (
+    <div className="flex flex-col h-dvh bg-warm-white overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-mist bg-white shrink-0">
+        <span className="font-serif text-xl font-light">Anna's <em className="text-clay italic">Stays</em></span>
+        <div className="flex items-center gap-3">
+          <Link to="/find-booking" className="text-[0.6rem] uppercase tracking-widest font-bold font-sans text-muted no-underline">Find Booking</Link>
+          {isAdmin && (
+            <button onClick={() => navigate('/admin')} className="bg-none border-none p-0 cursor-pointer text-muted">
+              <Settings size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {activeTab === 'stays' && (
+            <motion.div key="stays" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="h-full overflow-y-auto">
+              <div className="px-5 pt-6 pb-2">
+                <p className="text-[0.62rem] tracking-[0.22em] uppercase text-clay mb-1 font-sans">Helsinki Apartments</p>
+                <h2 className="font-serif text-2xl font-light">Choose your stay</h2>
+              </div>
+              <div className="flex flex-col pb-8">
+                {listings.map((l, idx) => (
+                  <div key={l.id}>
+                    <div className="px-5 py-4">
+                      <div className="relative h-[220px] bg-mist cursor-pointer overflow-hidden" onClick={() => setLightbox({ imgs: l.imgs, idx: 0 })}>
+                        <img src={resolveImageUrl(l.imgs[0])} alt={l.name} className="w-full h-full object-cover" />
+                        <span className="absolute top-3 left-3 text-[0.58rem] tracking-widest uppercase bg-white text-charcoal px-2 py-1 font-sans">
+                          {(() => {
+                            const ratingNum = typeof l.rating === 'string' ? parseFloat(l.rating.replace(/[^\d.]/g, '')) : Number(l.rating);
+                            return `${ratingNum >= 4.8 ? 'Superhost · ' : ''}★ ${l.rating || '5.0'}`;
+                          })()}
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <p className="text-[0.6rem] tracking-widest uppercase text-clay font-sans">{l.neigh}</p>
+                        <h3 className="font-serif text-xl font-light mt-0.5 mb-1">{l.name}</h3>
+                        <div className="flex gap-1 flex-wrap mb-2">
+                          {l.tags?.slice(0, 4).map((t: string) => (
+                            <span key={t} className="text-[0.55rem] tracking-widest uppercase border border-mist text-muted px-2 py-0.5 font-sans">{t}</span>
+                          ))}
+                        </div>
+                        <div className="flex items-end justify-between mt-3">
+                          <div>
+                            <span className="font-serif text-2xl font-light">€{getMobilePrice(l)}</span>
+                            <span className="text-[0.65rem] text-muted font-sans ml-1">/ night</span>
+                          </div>
+                          <span className="text-[0.62rem] text-muted font-sans">{l.size} · {l.guests} guests</span>
+                        </div>
+                        <button
+                          onClick={() => setBooking(l)}
+                          className="mt-3 w-full bg-forest text-white font-sans text-[0.68rem] tracking-widest uppercase py-3 border-none cursor-pointer"
+                        >
+                          {l.is_instant_book !== false ? 'Book Now' : 'Request to Stay'}
+                        </button>
+                      </div>
+                    </div>
+                    {idx < listings.length - 1 && (
+                      <div className="flex items-center justify-center gap-2 py-1 text-mist">
+                        <span>◇</span><span>◇</span><span>◇</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="mx-5 mt-4 p-5 bg-cream text-center">
+                  <p className="font-serif text-lg font-light mb-1">Not sure which apartment?</p>
+                  <p className="text-[0.75rem] text-muted font-sans mb-3">Chat with Anna and she'll help you find the perfect fit.</p>
+                  <button onClick={() => setActiveTab('chat')} className="bg-charcoal text-white font-sans text-[0.65rem] tracking-widest uppercase px-6 py-2.5 border-none cursor-pointer">
+                    Chat with Anna
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'helsinki' && (
+            <motion.div key="helsinki" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="h-full overflow-y-auto">
+              <div className="px-5 pt-6 pb-4">
+                <p className="text-[0.62rem] tracking-[0.22em] uppercase text-clay mb-1 font-sans">Local Knowledge</p>
+                <h2 className="font-serif text-2xl font-light mb-4">Helsinki Guide</h2>
+                <button onClick={() => setShowEvents(true)} className="w-full flex items-center justify-between bg-forest text-white px-5 py-4 border-none cursor-pointer">
+                  <span className="flex items-center gap-2 font-sans text-[0.7rem] tracking-widest uppercase"><CalendarDays size={14} /> This Week in Helsinki</span>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+              <div className="mx-5 mb-4 grid grid-cols-2 gap-0.5 bg-mist">
+                {GUIDE_DATA.map((g) => (
+                  <div key={g.title} onClick={() => setGuideModal(g)} className="bg-white p-4 cursor-pointer active:bg-cream transition-colors">
+                    <div className="text-base mb-2" style={{ color: g.color }}>{g.icon}</div>
+                    <p className="font-serif text-sm font-light mb-0.5">{g.title}</p>
+                    <p className="text-[0.6rem] text-muted font-sans">{g.places[0].name} & more</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mx-5 mb-8 flex flex-col gap-3">
+                <a href="mailto:info@anna-stays.fi" className="flex items-center gap-2.5 text-[0.82rem] text-charcoal no-underline font-sans">
+                  <span className="w-7 h-7 bg-cream flex items-center justify-center"><Mail size={13} /></span>
+                  info@anna-stays.fi
+                </a>
+                <a href="https://wa.me/358442400228" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 text-[0.82rem] text-charcoal no-underline font-sans">
+                  <span className="w-7 h-7 bg-[#25D366] flex items-center justify-center text-white"><Phone size={13} /></span>
+                  WhatsApp: +358 44 240 0228
+                </a>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'chat' && (
+            <motion.div key="chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="h-full flex flex-col">
+              <ChatBot listings={listings} onBookNow={(id) => {
+                const apt = listings.find(l => String(l.id) === String(id));
+                if (apt) { setBooking(apt); setActiveTab('stays'); }
+              }} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="shrink-0 bg-white border-t border-mist grid grid-cols-3">
+        {([
+          { id: 'stays' as const, icon: <Home size={20} />, label: 'Stays' },
+          { id: 'helsinki' as const, icon: <Map size={20} />, label: 'Helsinki' },
+          { id: 'chat' as const, icon: <MessageCircle size={20} />, label: 'Chat' },
+        ]).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex flex-col items-center gap-1 py-3 border-none bg-none cursor-pointer transition-colors ${activeTab === tab.id ? 'text-clay' : 'text-muted'}`}
+          >
+            {tab.icon}
+            <span className="text-[0.55rem] uppercase tracking-widest font-bold font-sans">{tab.label}</span>
+            {activeTab === tab.id && <span className="w-1 h-1 rounded-full bg-clay" />}
+          </button>
+        ))}
+      </div>
+
+      {booking && <BookingModal listing={booking} onClose={() => setBooking(null)} />}
+      {guideModal && <GuideModal category={guideModal} onClose={() => setGuideModal(null)} />}
+      {showEvents && <EventsPage onClose={() => setShowEvents(false)} />}
+      {lightbox && <Lightbox imgs={lightbox.imgs} startIdx={lightbox.idx} onClose={() => setLightbox(null)} />}
     </div>
   );
 }

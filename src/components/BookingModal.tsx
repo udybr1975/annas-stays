@@ -34,6 +34,11 @@ export default function BookingModal({ listing, onClose }: BookingModalProps) {
     fetchSpecialPrices();
     fetchBookedDates();
     fetchInstantBookStatus();
+    fetch('/api/sync-airbnb', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apartmentId: String(listing.id) }),
+    }).catch(() => {});
   }, [listing.id, refreshTrigger]);
 
   const fetchInstantBookStatus = async () => {
