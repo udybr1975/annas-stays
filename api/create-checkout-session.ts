@@ -1,5 +1,11 @@
 import Stripe from 'stripe';
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function formatDate(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return `${parseInt(day)} ${MONTHS[parseInt(month) - 1]} ${year}`;
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
@@ -39,7 +45,7 @@ export default async function handler(req: any, res: any) {
               currency: 'eur',
               product_data: {
                 name: listing.name,
-                description: `${booking.nights} night stay · ${booking.checkIn} to ${booking.checkOut}`,
+                description: `${booking.nights}-night stay in Helsinki · ${formatDate(booking.checkIn)} – ${formatDate(booking.checkOut)}`,
                 images: stripeImages,
               },
               unit_amount: Math.round(booking.totalPrice * 100),
