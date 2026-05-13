@@ -12,6 +12,8 @@ import verifyBookingHandler from "./api/verify-booking.js";
 import instagramCaptionHandler from "./api/instagram-caption.js";
 import requestUgcRefundHandler from "./api/request-ugc-refund.js";
 import approveUgcRefundHandler from "./api/approve-ugc-refund.js";
+import helsinkiEventsHandler from "./api/helsinki-events.js";
+import syncAirbnbHandler from "./api/sync-airbnb.js";
 
 dotenv.config();
 
@@ -37,6 +39,8 @@ async function startServer() {
   app.post("/api/instagram-caption", instagramCaptionHandler);
   app.post("/api/request-ugc-refund", requestUgcRefundHandler);
   app.post("/api/approve-ugc-refund", approveUgcRefundHandler);
+  app.post("/api/helsinki-events", helsinkiEventsHandler);
+  app.post("/api/sync-airbnb", syncAirbnbHandler);
 
   // ─── Stripe checkout session ─────────────────────────────────────────────
   app.post("/api/create-checkout-session", async (req, res) => {
@@ -126,6 +130,21 @@ async function startServer() {
 
   // ─── Email route ─────────────────────────────────────────────────────────
   app.post("/api/send-email", async (req, res) => {
+    if (req.body?.ntfyOnly === true) {
+      const { body, title, priority = 'default' } = req.body;
+      if (!body) return res.status(400).json({ error: 'Missing body' });
+      try {
+        await fetch(process.env.NTFY_URL!, {
+          method: 'POST',
+          body: body,
+          headers: { 'Title': title || "Anna's Stays", 'Priority': priority, 'Content-Type': 'text/plain' },
+        });
+        return res.status(200).json({ success: true });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+
     const { to, subject, html, replyTo } = req.body;
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) return res.status(500).json({ success: false, error: "No Resend API key" });
