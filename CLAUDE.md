@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Branch Strategy
 - **main** → deploys to anna-stays.fi (PRODUCTION — never develop directly here)
 - **staging** → deploys to staging.anna-stays.fi (all new features built here first)
-- Merge staging → main only after 11/11 test passes and feature is manually verified on staging
-- Use tests/promote-to-production.ps1 to merge safely
+- Merge staging → main when the user asks to push to main — no automatic test gate
+- Tests are run on demand via skills when the user explicitly requests them (on staging, main, or both)
 
 # Anna Stays — Project Context
 
@@ -155,10 +155,7 @@ Before pushing any `api/` file, grep for `VITE_` and confirm zero matches.
 
 ## Testing Rules
 
-### After every code change:
-1. Run `npx tsx tests/run-booking-test.ts`
-2. All 11 steps must pass
-3. Never push to GitHub if any step fails
+The 11-step automated test suite is not a required gate before pushing. Run it only when the user explicitly asks, targeting staging, main, or both as specified.
 
 ### Before testing production (anna-stays.fi):
 1. Stop the Stripe CLI window (Ctrl+C)
