@@ -9,18 +9,23 @@ interface Message {
   text: string;
 }
 
-export default function ChatBot({ 
-  initialBooking, 
+export default function ChatBot({
+  initialBooking,
   initialListing,
   listings = [],
-  onBookNow 
-}: { 
-  initialBooking?: any; 
+  onBookNow,
+  forceOpen = false
+}: {
+  initialBooking?: any;
   initialListing?: any;
   listings?: any[];
   onBookNow?: (id: string) => void;
+  forceOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   const [msgs, setMsgs] = useState<Message[]>([
     { role: "assistant", text: "Hei! Welcome to Anna's Stays. I'm here to help with your stay or any Helsinki tips. What's on your mind?" }
   ]);
@@ -385,9 +390,11 @@ export default function ChatBot({
 
   return (
     <div className="font-sans">
-      <button onClick={() => setOpen(!open)} className="fixed bottom-[90px] right-7 bg-forest text-white w-12 h-12 rounded-full z-[999] shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
-        {open ? "✕" : "💬"}
-      </button>
+      {!forceOpen && (
+        <button onClick={() => setOpen(!open)} className="fixed bottom-[90px] right-7 bg-forest text-white w-12 h-12 rounded-full z-[999] shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
+          {open ? "✕" : "💬"}
+        </button>
+      )}
 
       {open && (
         <div className="fixed bottom-[150px] right-7 w-[340px] h-[500px] bg-warm-white border border-mist z-[999] flex flex-col shadow-2xl rounded-sm overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
