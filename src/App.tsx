@@ -48,7 +48,7 @@ export default function App() {
   const fetchListings = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from("apartments").select("*").order("id");
+      const { data, error } = await supabase.from("apartments").select("*").eq("is_visible", true).order("id");
       const { data: priceData } = await supabase.from("apartment_prices").select("*");
       if (priceData) setSpecialPrices(priceData);
       if (error) {
