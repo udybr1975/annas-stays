@@ -1,8 +1,12 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Branch Strategy
 - **main** → deploys to anna-stays.fi (PRODUCTION — never develop directly here)
 - **staging** → deploys to staging.anna-stays.fi (all new features built here first)
-- Merge staging → main only after 11/11 test passes and feature is manually verified on staging
-- Use tests/promote-to-production.ps1 to merge safely
+- Merge staging → main when the user asks to push to main — no automatic test gate
+- Tests are run on demand via skills when the user explicitly requests them (on staging, main, or both)
 
 # Anna Stays — Project Context
 
@@ -11,34 +15,138 @@
 - Live URL: anna-stays.fi
 - Stack: React, Vite, Express, Supabase, Stripe, Resend, ntfy, Gemini, Vercel
 
+## Commands
+
+```bash
+# Local dev (starts Express + Vite together)
+npm run dev
+
+# Type-check only (no emit) — the lint step
+npm run lint
+
+# Production build
+npm run build
+```
+
+There is no separate test runner command — the project uses a hand-rolled E2E script:
+
+```bash
+npx tsx tests/run-booking-test.ts   # 11-step booking flow test
+```
+
+Start all five local services (Express, Vite, Stripe CLI, Mailpit, etc.) with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\dev-start.ps1
+```
+
+## Architecture
+
+### Dual-runtime design
+
+The project runs the same API handler files in two environments:
+
+| Environment | Runtime | How |
+|---|---|---|
+| Local dev | Express (`server.ts`) | Handlers imported and registered as `app.post(...)` routes |
+| Production | Vercel serverless | Each `api/*.ts` file is a Vercel Function (default export = handler) |
+
+`server.ts` is the local development entry point only. It wraps Vite's dev server as middleware. On Vercel, `vite build` produces `dist/` and `vercel.json` rewrites all non-API paths to `index.html`.
+
+**Important**: `api/webhook.ts` must be registered before `express.json()` in `server.ts` because it reads the raw body stream for Stripe signature verification.
+
+### Booking state machine
+
+```
+pending → awaiting_payment → confirmed
+pending → declined
+confirmed → cancelled
+```
+
+- **Instant book** apartments skip the pending state: frontend creates checkout session → Stripe webhook fires → booking inserted as `confirmed`.
+- **Request-to-book** apartments: frontend saves a `pending` booking → admin approves via dashboard → `api/approve-booking.ts` creates a Stripe Payment Link and sets status to `awaiting_payment` → guest pays → Stripe webhook sets `confirmed`.
+- The webhook (`api/webhook.ts`) handles both flows and differentiates via `session.metadata.source === 'approve_booking'`.
+
+### Every booking status change must trigger three things
+1. Guest email (via Resend)
+2. Host email to info@anna-stays.fi
+3. ntfy push notification to `process.env.NTFY_URL`
+
+### Email architecture
+
+Two parallel email systems exist — use `api/emailTemplate.ts` for all new emails:
+
+- **`api/emailTemplate.ts`** — canonical HTML builder used by `webhook.ts`, `approve-booking.ts`, `cancel-booking.ts`, `decline-booking.ts`. Pure string helpers, no imports. Palette is defined in its header comment.
+- **`src/lib/emailUtils.ts`** — older client-side template used only by `api/send-email.ts` fallback. Has a hardcoded staging URL — do not extend this file.
+
+All API files send emails by calling the Resend REST API directly (not the SDK), so the `RESEND_API_URL` env var can be overridden locally to point at Mailpit (`http://localhost:2525`).
+
+### Supabase tables
+- `apartments` — listing config, images array, `is_instant_book`, `min`, weekend pricing fields
+- `apartment_details` — per-apartment knowledge base entries (`category`, `content`, `is_private`)
+- `apartment_prices` — event/season pricing overrides (`pricing_type`, `start_date`, `end_date`, `price_override`)
+- `bookings` — booking records with full state machine fields + `admin_needs_attention` flag
+- `guests` — one row per booking (email is no longer unique — a guest can have multiple rows)
+- `airbnb_blocked_dates` — iCal-synced blocked ranges per apartment
+
+The frontend client in `src/lib/supabase.ts` uses a hardcoded anon key (intentional — avoids env var issues on Vercel). Server-side API files must use `SUPABASE_SERVICE_ROLE_KEY` via `createClient(url, serviceKey)`.
+
+### ChatBot (`src/components/ChatBot.tsx`)
+
+The chatbot calls Gemini directly from the browser using `window.GEMINI_API_KEY` (set from `VITE_GEMINI_API_KEY` in `App.tsx`). It maintains a hardcoded `idMap` mapping short integer IDs (1/2/3) to Supabase UUIDs. When the chatbot has a verified booking context, it has access to private apartment details (`is_private: true` rows from `apartment_details`).
+
+#### `forceOpen` prop (added 2026-05-14)
+
+`ChatBot` accepts an optional `forceOpen?: boolean` prop (default `false`).
+
+- When `false` (desktop): the floating 💬 button is visible; the panel is a fixed popup (`fixed bottom-[150px] right-7 w-[340px] h-[500px]`) toggled by the button.
+- When `true` (mobile Chat tab): the floating button is hidden; the panel renders as a full-height inline layout (`flex flex-col h-full`) that fills its parent container — header pinned top, messages scrolling in the middle (`flex-1 overflow-y-auto min-h-0`), input bar pinned bottom. All fixed/absolute positioning is removed.
+
+In `MobileApp` (`App.tsx`), the `ChatBot` inside the `activeTab === 'chat'` block uses `forceOpen={true}`. The desktop `ChatBot` in `LandingPage` is unchanged and does not pass `forceOpen`.
+
+### Gemini usage
+- **Frontend** (ChatBot): `VITE_GEMINI_API_KEY` → `window.GEMINI_API_KEY` → direct browser calls
+- **Backend** (webhook, helsinki-events): `GEMINI_API_KEY` env var → server-side calls
+- Model: `gemini-2.5-flash` for all uses
+- `api/helsinki-events.ts` uses `responseMimeType: 'application/json'` and retries up to 3× on 503 errors
+
+### Pricing priority (in order)
+1. Active event price (`apartment_prices` where `pricing_type !== 'season'`)
+2. High season price (`pricing_type === 'season'` with "high" in `event_name`)
+3. Weekend pricing (`listing.weekend_pricing_enabled`)
+4. Base price (`listing.price`)
+
+### Mobile vs desktop layout
+
+`App.tsx` renders `<LandingPage>` wrapped in `hidden lg:block` and `<MobileApp>` wrapped in `lg:hidden`. They share the same data but have completely different layouts — MobileApp uses a bottom tab bar (Stays / Helsinki / Chat). Both render the same modals (`BookingModal`, `GuideModal`, `EventsPage`, `Lightbox`, `ChatBot`).
+
+### Admin access
+Admin is detected by checking `session.user.email === "udy.bar.yosef@gmail.com"` via Supabase Auth OTP. The `/admin` route renders `AdminDashboard`, which has tabs: reservations, listings, pricing, knowledge base, UGC posts.
+
+### iCal / Airbnb sync
+`api/sync-airbnb.ts` fetches iCal URLs stored per apartment in the `apartments` table, parses VEVENT blocks, and upserts blocked date ranges into `airbnb_blocked_dates`. Triggered manually from the admin dashboard.
+
 ## Critical Rules
 - Every booking status change must trigger three things: guest email, info@anna-stays.fi email, ntfy notification
 - Never push to GitHub without explicit user approval
 - Never modify /tests/ or /api/test/ files as part of real fixes
 - Real fixes go in real API files only
 
-## Local Development
-- Start all services: powershell -ExecutionPolicy Bypass -File tests\dev-start.ps1
-- Run automated test: npx tsx tests/run-booking-test.ts
-- Local emails go to Mailpit localhost:8025
-- RESEND_API_URL=http://localhost:2525 routes emails to Mailpit locally
-- Stripe always test mode locally
-- Update STRIPE_WEBHOOK_SECRET in .env after every Stripe CLI restart
-
 ## Environment Variables
+
 - Local credentials in .env (gitignored)
 - Production credentials in Vercel dashboard
 - NTFY_URL and GEMINI_API_KEY must exist in both .env and Vercel
 
-## Environment Variable Rules
-- Server-side API files must NEVER use VITE_ prefixed environment variables
-- VITE_ variables are frontend-only and completely invisible to Vercel serverless functions
-- Any code written in the api/ folder must use these server-side variables:
-  - NEXT_PUBLIC_SUPABASE_URL (never VITE_SUPABASE_URL)
-  - RESEND_API_KEY (never VITE_RESEND_API_KEY)
-  - GEMINI_API_KEY (never VITE_GEMINI_API_KEY)
-  - SUPABASE_SERVICE_ROLE_KEY for all server-side Supabase operations
-- Before pushing any api/ file to GitHub, always grep for VITE_ and confirm zero matches
+### Server-side API files must NEVER use VITE_ prefixed variables
+
+Any code in `api/` must use:
+- `NEXT_PUBLIC_SUPABASE_URL` (never `VITE_SUPABASE_URL`)
+- `RESEND_API_KEY`
+- `GEMINI_API_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` for all server-side Supabase operations
+
+Before pushing any `api/` file, grep for `VITE_` and confirm zero matches.
 
 ## Test Infrastructure (local only)
 - /tests/ — all test scripts, gitignored
@@ -47,10 +155,7 @@
 
 ## Testing Rules
 
-### After every code change:
-1. Run `npx tsx tests/run-booking-test.ts`
-2. All 11 steps must pass
-3. Never push to GitHub if any step fails
+The 11-step automated test suite is not a required gate before pushing. Run it only when the user explicitly asks, targeting staging, main, or both as specified.
 
 ### Before testing production (anna-stays.fi):
 1. Stop the Stripe CLI window (Ctrl+C)
@@ -65,7 +170,7 @@
 
 ## Staging / Production Sync
 
-staging and main are currently **in sync** (last merged 2026-05-13).
+staging and main are currently **in sync** (last merged 2026-05-14).
 
 ## Stripe Checkout Image
 

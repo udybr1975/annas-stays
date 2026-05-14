@@ -818,7 +818,7 @@ function MobileApp({ listings, specialPrices, isAdmin }: { listings: any[], spec
 
           {activeTab === 'chat' && (
             <motion.div key="chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="h-full flex flex-col">
-              <ChatBot listings={listings} onBookNow={(id) => {
+              <ChatBot listings={listings} forceOpen={true} onBookNow={(id) => {
                 const apt = listings.find(l => String(l.id) === String(id));
                 if (apt) { setBooking(apt); setActiveTab('stays'); }
               }} />

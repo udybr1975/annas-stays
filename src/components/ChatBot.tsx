@@ -9,18 +9,23 @@ interface Message {
   text: string;
 }
 
-export default function ChatBot({ 
-  initialBooking, 
+export default function ChatBot({
+  initialBooking,
   initialListing,
   listings = [],
-  onBookNow 
-}: { 
-  initialBooking?: any; 
+  onBookNow,
+  forceOpen = false
+}: {
+  initialBooking?: any;
   initialListing?: any;
   listings?: any[];
   onBookNow?: (id: string) => void;
+  forceOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   const [msgs, setMsgs] = useState<Message[]>([
     { role: "assistant", text: "Hei! Welcome to Anna's Stays. I'm here to help with your stay or any Helsinki tips. What's on your mind?" }
   ]);
@@ -384,14 +389,19 @@ export default function ChatBot({
   };
 
   return (
-    <div className="font-sans">
-      <button onClick={() => setOpen(!open)} className="fixed bottom-[90px] right-7 bg-forest text-white w-12 h-12 rounded-full z-[999] shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
-        {open ? "✕" : "💬"}
-      </button>
+    <div className={forceOpen ? "flex flex-col h-full" : "font-sans"}>
+      {!forceOpen && (
+        <button onClick={() => setOpen(!open)} className="fixed bottom-[90px] right-7 bg-forest text-white w-12 h-12 rounded-full z-[999] shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
+          {open ? "✕" : "💬"}
+        </button>
+      )}
 
-      {open && (
-        <div className="fixed bottom-[150px] right-7 w-[340px] h-[500px] bg-warm-white border border-mist z-[999] flex flex-col shadow-2xl rounded-sm overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
-          <div className="bg-forest text-cream p-3 flex justify-between items-center font-bold uppercase text-[0.7rem] tracking-widest">
+      {(forceOpen || open) && (
+        <div className={forceOpen
+          ? "flex flex-col h-full bg-warm-white overflow-hidden"
+          : "fixed bottom-[150px] right-7 w-[340px] h-[500px] bg-warm-white border border-mist z-[999] flex flex-col shadow-2xl rounded-sm overflow-hidden animate-in slide-in-from-bottom-2 duration-300"
+        }>
+          <div className="bg-forest text-cream p-3 flex justify-between items-center font-bold uppercase text-[0.7rem] tracking-widest shrink-0">
             <span>Anna's Assistant</span>
             {verifiedBooking ? (
               <span className="bg-sage/20 px-2 py-1 rounded flex items-center gap-1"><Unlock size={10}/> Verified</span>
@@ -401,7 +411,7 @@ export default function ChatBot({
           </div>
 
           {showVerifyForm && (
-            <form onSubmit={handleVerify} className="p-4 bg-cream border-b border-mist space-y-2">
+            <form onSubmit={handleVerify} className="p-4 bg-cream border-b border-mist space-y-2 shrink-0">
               <input type="email" placeholder="Email" required value={verifyForm.email} onChange={e => setVerifyForm({...verifyForm, email: e.target.value})} className="w-full p-2 text-xs border border-mist outline-none focus:border-clay" />
               <input type="text" placeholder="Reference" required value={verifyForm.ref} onChange={e => setVerifyForm({...verifyForm, ref: e.target.value})} className="w-full p-2 text-xs border border-mist outline-none focus:border-clay" />
               {verifyError && <p className="text-[0.6rem] text-clay italic">{verifyError}</p>}
@@ -409,23 +419,18 @@ export default function ChatBot({
             </form>
           )}
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
             {msgs.map((m, i) => (
               <div key={i} className={`p-3 text-sm leading-relaxed flex flex-col ${m.role === "user" ? "bg-forest text-white self-end rounded-l-lg rounded-tr-lg ml-8" : "bg-cream text-charcoal self-start rounded-r-lg rounded-tl-lg border border-mist mr-8"}`}>
                 <span>{m.text}</span>
                 {m.role === "assistant" && !verifiedBooking && selectedAptId && i > 0 && (
-                  <button 
+                  <button
                     onClick={() => {
-                      console.log("ChatBot: Book Now clicked for selectedAptId:", selectedAptId);
-                      if (selectedAptId) {
-                        onBookNow?.(selectedAptId);
-                      } else {
-                        console.error("ChatBot: No selectedAptId found when clicking Book Now");
-                      }
+                      if (selectedAptId) onBookNow?.(selectedAptId);
                     }}
                     className="mt-3 pt-2 border-t border-mist/40 flex items-center gap-1.5 text-[0.6rem] font-bold tracking-[0.2em] text-forest hover:text-clay transition-colors uppercase self-start group"
                   >
-                    Book Now 
+                    Book Now
                     <ExternalLink size={10} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   </button>
                 )}
@@ -436,7 +441,7 @@ export default function ChatBot({
           </div>
 
           {!loading && !showVerifyForm && (
-            <div className="p-2 px-4 flex flex-wrap gap-2">
+            <div className="p-2 px-4 flex flex-wrap gap-2 shrink-0">
               {!selectedAptId ? (
                 (listings.length > 0 ? listings : LISTINGS).map(l => (
                   <button key={l.id} onClick={() => { setSelectedAptId(l.id); setMsgs(p => [...p, {role: 'assistant', text: `I'd love to tell you about ${l.name}!` }]) }} className="text-[0.65rem] border border-mist px-2 py-1 rounded-full bg-white hover:bg-mist transition-colors shadow-sm">{l.name}</button>
@@ -444,9 +449,9 @@ export default function ChatBot({
               ) : (
                 <>
                   {suggestedCategories.map(c => (
-                    <button 
-                      key={c} 
-                      onClick={() => { 
+                    <button
+                      key={c}
+                      onClick={() => {
                         const getQuestion = (cat: string) => {
                           const lower = cat.toLowerCase();
                           if (lower.includes("kitchen")) return "Tell me about the kitchen";
@@ -462,24 +467,24 @@ export default function ChatBot({
                           if (lower.includes("directions")) return "How do I get to the apartment?";
                           return `Tell me about the ${lower}`;
                         };
-                        setInput(getQuestion(c)); 
+                        setInput(getQuestion(c));
                         setTimeout(() => {
                           const sendBtn = document.getElementById('chat-send');
                           sendBtn?.click();
                         }, 100);
-                      }} 
+                      }}
                       className="text-[0.65rem] border border-forest/20 px-2 py-1 rounded-full bg-forest/5 text-forest hover:bg-forest/10 transition-colors shadow-sm"
                     >
                       {c}
                     </button>
                   ))}
                   {!verifiedBooking && (
-                    <button 
-                      onClick={() => { 
-                        setSelectedAptId(null); 
+                    <button
+                      onClick={() => {
+                        setSelectedAptId(null);
                         setMsgs([{ role: "assistant", text: "Hei! Welcome to Anna's Stays. I'm here to help with your stay or any Helsinki tips. What's on your mind?" }]);
                         setHistory([]);
-                      }} 
+                      }}
                       className="text-[0.65rem] border border-clay/20 px-2 py-1 rounded-full bg-clay/5 text-clay italic"
                     >
                       ← Change
@@ -490,7 +495,7 @@ export default function ChatBot({
             </div>
           )}
 
-          <div className="p-3 border-t border-mist bg-white flex gap-2">
+          <div className="p-3 border-t border-mist bg-white flex gap-2 shrink-0">
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Ask me anything..." className="flex-1 p-2 text-sm border border-mist outline-none focus:border-clay bg-cream/20" />
             <button id="chat-send" onClick={send} className="bg-forest text-white px-3 py-2 rounded-sm hover:bg-forest/90 transition-colors flex items-center justify-center">
               <Send size={14} />
