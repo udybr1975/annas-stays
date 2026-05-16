@@ -438,6 +438,8 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   const timelineRef = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
 
+  const visibleApartments = apartments.filter((a: any) => a.is_visible !== false);
+
   useEffect(() => {
     const toComplete = bookings.filter(
       b => b.status === 'confirmed' && new Date(b.check_out + 'T23:59:59') < new Date()
@@ -455,8 +457,8 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   }, [bookings]);
 
   useEffect(() => {
-    if (apartments.length > 0 && !calendarApartmentId) {
-      setCalendarApartmentId(String(apartments[0].id));
+    if (visibleApartments.length > 0 && !calendarApartmentId) {
+      setCalendarApartmentId(String(visibleApartments[0].id));
     }
   }, [apartments]);
 
@@ -585,7 +587,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
 
   const todayActivity = useMemo(() => {
-    const active = bookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined');
+    const active = visibleEffectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined');
     return {
       arriving: active.filter(b => isSameDay(parseISO(b.check_in), today)),
       departing: active.filter(b => isSameDay(parseISO(b.check_out), today)),
@@ -601,6 +603,18 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     [bookings, bookingOverrides]
   );
 
+  const visibleApartmentIds = useMemo(
+    () => new Set(visibleApartments.map((a: any) => String(a.id))),
+    [visibleApartments]
+  );
+
+  const visibleEffectiveBookings = useMemo(
+    () => effectiveBookings.filter((b: any) =>
+      visibleApartmentIds.has(String(b.apartment_id))
+    ),
+    [effectiveBookings, visibleApartmentIds]
+  );
+
   const filterLabels: Record<typeof mobileFilter, string> = {
     all: 'All Bookings',
     pending: 'Pending',
@@ -610,25 +624,25 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   };
 
   const filterCounts = useMemo(() => ({
-    all: effectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined' && b.status !== 'completed').length,
-    pending: effectiveBookings.filter(b => b.status === 'pending').length,
-    awaiting: effectiveBookings.filter(b => b.status === 'awaiting_payment').length,
-    confirmed: effectiveBookings.filter(b => b.status === 'confirmed').length,
-    completed: effectiveBookings.filter(b => b.status === 'completed').length,
-  }), [effectiveBookings]);
+    all: visibleEffectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined' && b.status !== 'completed').length,
+    pending: visibleEffectiveBookings.filter(b => b.status === 'pending').length,
+    awaiting: visibleEffectiveBookings.filter(b => b.status === 'awaiting_payment').length,
+    confirmed: visibleEffectiveBookings.filter(b => b.status === 'confirmed').length,
+    completed: visibleEffectiveBookings.filter(b => b.status === 'completed').length,
+  }), [visibleEffectiveBookings]);
 
   const mobileBookings = useMemo(() => {
     if (mobileFilter === 'completed') {
-      return effectiveBookings
+      return visibleEffectiveBookings
         .filter(b => b.status === 'completed')
         .sort((a, b) => new Date(b.check_out).getTime() - new Date(a.check_out).getTime());
     }
-    const active = effectiveBookings.filter(
+    const active = visibleEffectiveBookings.filter(
       b => b.status !== 'cancelled' && b.status !== 'declined' && b.status !== 'completed'
     );
     const filtered = mobileFilter === 'all' ? active : active.filter(b => b.status === mobileFilter);
     return filtered.sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
-  }, [effectiveBookings, mobileFilter]);
+  }, [visibleEffectiveBookings, mobileFilter]);
 
   return (
     <>
@@ -729,7 +743,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
         {mobileView === 'calendar' && (
           <div className="pb-32 overflow-visible">
             <div className="flex gap-2 overflow-x-auto px-4 pt-4 pb-2">
-              {apartments.map(apt => (
+              {visibleApartments.map(apt => (
                 <button key={apt.id} onClick={() => setCalendarApartmentId(String(apt.id))}
                   className={`shrink-0 py-2 px-4 text-[0.65rem] uppercase tracking-widest font-bold font-sans rounded-full whitespace-nowrap ${calendarApartmentId === String(apt.id) ? 'bg-charcoal text-white' : 'bg-white border border-mist text-muted'}`}>
                   {apt.name}
@@ -760,7 +774,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
               const firstDayCol = (monthStart.getDay() + 6) % 7;
               const totalCells = Math.ceil((firstDayCol + daysInMonth) / 7) * 7;
 
-              const aptBookings = effectiveBookings.filter(b =>
+              const aptBookings = visibleEffectiveBookings.filter(b =>
                 String(b.apartment_id) === calendarApartmentId &&
                 b.status !== 'cancelled' && b.status !== 'declined'
               );
@@ -843,8 +857,8 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bookings.filter(b => b.admin_needs_attention).length > 0 ? (
-              bookings.filter(b => b.admin_needs_attention).map(b => {
+            {visibleEffectiveBookings.filter(b => b.admin_needs_attention).length > 0 ? (
+              visibleEffectiveBookings.filter(b => b.admin_needs_attention).map(b => {
                 const guest = Array.isArray(b.guests) ? b.guests[0] : b.guests;
                 const guestName = `${guest?.first_name || ""} ${guest?.last_name || ""}`.trim() || "Guest";
                 let icon = "📩"; let text = `New Request from ${guestName}`;
@@ -900,9 +914,9 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                 </div>
               </div>
               <div className="divide-y divide-mist">
-                {apartments.map(apt => {
+                {visibleApartments.map(apt => {
                   const metrics = days.reduce((acc, day) => {
-                    const isBooked = bookings.some(b => b.apartment_id === apt.id && b.status !== 'cancelled' && b.status !== 'declined' && isWithinInterval(day, { start: parseISO(b.check_in), end: parseISO(b.check_out) }) && !isSameDay(day, parseISO(b.check_out)));
+                    const isBooked = visibleEffectiveBookings.some(b => b.apartment_id === apt.id && b.status !== 'cancelled' && b.status !== 'declined' && isWithinInterval(day, { start: parseISO(b.check_in), end: parseISO(b.check_out) }) && !isSameDay(day, parseISO(b.check_out)));
                     const { price } = getPriceForDate(apt, day);
                     if (isBooked) { acc.bookedNights++; acc.revenue += price; } else { acc.potential += price; }
                     return acc;
@@ -931,7 +945,7 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
                             </div>
                           );
                         })}
-                        {bookings.filter(b => b.apartment_id === apt.id && b.status !== 'cancelled' && b.status !== 'declined').map(booking => {
+                        {visibleEffectiveBookings.filter(b => b.apartment_id === apt.id && b.status !== 'cancelled' && b.status !== 'declined').map(booking => {
                           const start = parseISO(booking.check_in), end = parseISO(booking.check_out);
                           const monthStart = startOfMonth(currentMonth), monthEnd = endOfMonth(currentMonth);
                           const nextMonthStart = addDays(monthEnd, 1);
