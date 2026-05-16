@@ -586,18 +586,6 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
 
   const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
 
-  const todayActivity = useMemo(() => {
-    const active = visibleEffectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined');
-    return {
-      arriving: active.filter(b => isSameDay(parseISO(b.check_in), today)),
-      departing: active.filter(b => isSameDay(parseISO(b.check_out), today)),
-      inHouse: active.filter(b => {
-        const s = parseISO(b.check_in), e = parseISO(b.check_out);
-        return isWithinInterval(today, { start: s, end: e }) && !isSameDay(s, today) && !isSameDay(e, today);
-      }),
-    };
-  }, [bookings, today]);
-
   const effectiveBookings = useMemo(() =>
     bookings.map(b => bookingOverrides[b.id] ? { ...b, status: bookingOverrides[b.id] } : b),
     [bookings, bookingOverrides]
@@ -614,6 +602,18 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
     ),
     [effectiveBookings, visibleApartmentIds]
   );
+
+  const todayActivity = useMemo(() => {
+    const active = visibleEffectiveBookings.filter(b => b.status !== 'cancelled' && b.status !== 'declined');
+    return {
+      arriving: active.filter(b => isSameDay(parseISO(b.check_in), today)),
+      departing: active.filter(b => isSameDay(parseISO(b.check_out), today)),
+      inHouse: active.filter(b => {
+        const s = parseISO(b.check_in), e = parseISO(b.check_out);
+        return isWithinInterval(today, { start: s, end: e }) && !isSameDay(s, today) && !isSameDay(e, today);
+      }),
+    };
+  }, [visibleEffectiveBookings, today]);
 
   const filterLabels: Record<typeof mobileFilter, string> = {
     all: 'All Bookings',
