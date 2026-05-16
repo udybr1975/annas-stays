@@ -65,6 +65,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [ugcLoading, setUgcLoading] = useState(false);
   const [approvingUgc, setApprovingUgc] = useState<string | null>(null);
 
+  const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   // ── Mobile burger menu state ───────────────────────────────────────────────
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -390,6 +393,18 @@ const deleteBooking = async (id: string) => {
     } finally {
       setKnowledgeLoading(false);
     }
+  };
+
+  const handleDeleteListing = async (id: string) => {
+    const { error } = await supabase.from('apartments').delete().eq('id', id);
+    if (error) {
+      showToast('Error deleting listing: ' + error.message, 'error');
+    } else {
+      showToast('Listing deleted', 'success');
+      setApartments(prev => prev.filter(l => l.id !== id));
+    }
+    setDeletingListingId(null);
+    setConfirmDeleteId(null);
   };
 
   const deleteKnowledge = async (id: string) => {
@@ -996,6 +1011,57 @@ const deleteBooking = async (id: string) => {
                           <div className="w-11 h-6 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest"></div>
                         </label>
                       </div>
+                    </div>
+                    <div className="pt-4 border-t border-mist/30 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-clay" style={{ fontSize: 16 }}>◎</span>
+                        <h3 className="font-serif text-lg font-light">Listing Visibility</h3>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[0.6rem] uppercase tracking-widest text-muted font-sans">
+                          {l.is_visible !== false ? 'Visible to guests' : 'Hidden from guests'}
+                        </span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={l.is_visible !== false}
+                            onChange={e => saveField(l.id, 'is_visible', e.target.checked)}
+                          />
+                          <div className="w-11 h-6 bg-mist peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest"></div>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-mist/30 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Trash2 size={16} className="text-clay" />
+                        <h3 className="font-serif text-lg font-light">Delete Listing</h3>
+                      </div>
+                      {confirmDeleteId === l.id ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-[0.65rem] uppercase tracking-widest text-clay font-sans font-bold">This cannot be undone.</span>
+                          <button
+                            onClick={() => { setDeletingListingId(l.id); handleDeleteListing(l.id); }}
+                            disabled={deletingListingId === l.id}
+                            className="bg-clay text-white px-4 py-2 font-sans text-[0.6rem] tracking-widest uppercase hover:bg-clay/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {deletingListingId === l.id ? <><Loader2 size={12} className="animate-spin" /> Deleting...</> : 'Confirm Delete'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="bg-mist text-charcoal px-4 py-2 font-sans text-[0.6rem] tracking-widest uppercase hover:bg-mist/80 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(l.id)}
+                          className="bg-clay/10 text-clay px-4 py-2 font-sans text-[0.6rem] tracking-widest uppercase hover:bg-clay/20 transition-colors"
+                        >
+                          Delete Listing
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
