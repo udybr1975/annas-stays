@@ -457,7 +457,11 @@ export default function ExecutiveView({ bookings, apartments, specialPrices, onC
   }, [bookings]);
 
   useEffect(() => {
-    if (visibleApartments.length > 0 && !calendarApartmentId) {
+    if (visibleApartments.length === 0) return;
+    const currentIsVisible = visibleApartments.some(
+      (a: any) => String(a.id) === calendarApartmentId
+    );
+    if (!calendarApartmentId || !currentIsVisible) {
       setCalendarApartmentId(String(visibleApartments[0].id));
     }
   }, [apartments]);
