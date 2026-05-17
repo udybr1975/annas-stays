@@ -170,7 +170,7 @@ The 11-step automated test suite is not a required gate before pushing. Run it o
 
 ## Staging / Production Sync
 
-staging and main are currently **in sync** (last merged 2026-05-14, mobile chat layout fix + CLAUDE.md updates).
+staging and main are currently **in sync** (last merged 2026-05-17, ExecutiveView invisible apartment filtering + crash fix).
 
 ## Stripe Checkout Image
 
